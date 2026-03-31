@@ -1,0 +1,79 @@
+# AI Integration
+openai>=1.12.0
+anthropic>=0.18.0
+
+# PDF/Image Processing
+PyPDF2>=3.0.0
+pdf2image>=1.16.3
+Pillow>=10.2.0
+pypdf>=4.0.0
+
+# Excel Processing
+pandas>=2.0.0
+openpyxl>=3.1.0
+
+# XML Processing
+lxml>=5.0.0
+xmltodict>=0.13.0
+
+# OFX/OFC Bank Statement Processing (Item 2 - partner feedback)
+ofxparse>=0.21
+
+# Word Document Processing (Item 2 - partner feedback)
+python-docx>=1.1.0
+
+# Export Functionality
+reportlab>=4.0.0  # For PDF generation
+
+# Web Framework (for API later)
+fastapi>=0.109.0
+uvicorn>=0.27.0
+python-multipart>=0.0.9
+
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+psycopg2-binary>=2.9.9  # PostgreSQL adapter for SQLAlchemy
+
+# Authentication & Security
+bcrypt==4.0.1  # Pin to 4.0.1 for passlib compatibility
+passlib[bcrypt]>=1.7.4
+python-jose[cryptography]>=3.3.0
+cryptography>=42.0.0  # For Fernet encryption (MFA secrets)
+pyotp>=2.9.0  # For TOTP (Google Authenticator MFA)
+user-agents>=2.2.0  # For parsing User-Agent headers in session management
+
+# Payments
+stripe>=8.0.0
+
+# Email (Resend for password reset, email-validator included in pydantic[email] below)
+resend>=0.8.0
+
+# AWS S3 (File Storage)
+boto3>=1.34.0
+botocore>=1.34.0
+
+# Redis & Caching
+redis>=5.0.0
+hiredis>=2.3.0  # For faster Redis performance
+
+# Celery (Background Tasks)
+celery>=5.3.0
+celery[redis]>=5.3.0
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.6.0
+pydantic-settings>=2.0.0  # For settings management
+aiofiles>=23.2.0
+python-magic>=0.4.27
+bleach>=6.1.0  # For input sanitization
+slowapi>=0.1.9  # For rate limiting
+pydantic[email]>=2.6.0  # For email validation
+# APScheduler removed — jobs now run via AWS Lambda + EventBridge
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+httpx>=0.25.0
+faker>=20.0.0

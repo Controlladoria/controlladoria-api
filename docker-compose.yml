@@ -1,0 +1,35 @@
+version: '3.8'
+
+# ============================================================================
+# LOCAL DEVELOPMENT ONLY - NOT USED IN RAILWAY DEPLOYMENT
+# ============================================================================
+# This docker-compose file is ONLY for local development.
+# Railway deployment uses Railway's managed PostgreSQL service.
+# Railway auto-injects DATABASE_URL - no Docker containers needed!
+# ============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dresystem_postgres
+    environment:
+      POSTGRES_USER: dresystem
+      POSTGRES_PASSWORD: dresystem_dev_2026
+      POSTGRES_DB: dresystem
+      # Enable UTF-8 for Brazilian Portuguese support
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=pt_BR.UTF-8"
+    ports:
+      - "5432:5432"
+    volumes:
+      # Persist data between container restarts
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dresystem"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
