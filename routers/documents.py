@@ -2853,13 +2853,14 @@ async def confirm_document_validation(
 @router.post("/{document_id}/reject-validation")
 async def reject_document_validation(
     document_id: int,
+    request: Request,
     body: dict = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """
     Reject a document during validation (Item 9).
-    Marks the document as FAILED with a rejection reason.
+    Fully deletes the document (file + DB record) on rejection.
     """
     doc = db.query(Document).filter(Document.id == document_id).first()
 
@@ -2874,28 +2875,40 @@ async def reject_document_validation(
 
     reason = (body or {}).get("reason", "Rejeitado pelo usuário durante validação")
 
-    doc.status = DocumentStatus.FAILED
-    doc.error_message = reason
-    db.commit()
+    # Delete the actual file (skip for manual entries and CSV imports)
+    if doc.file_type not in ["manual", "csv_import"]:
+        try:
+            if settings.use_s3:
+                s3_storage.delete_file(doc.file_path)
+            else:
+                file_path = Path(doc.file_path)
+                if file_path.exists():
+                    file_path.unlink()
+        except Exception as e:
+            logger.warning(f"Could not delete file {doc.file_path}: {e}")
 
-    # Audit trail
-    audit_entry = AuditLog(
+    # Audit trail BEFORE deleting the record
+    log_audit_trail(
+        db=db,
         user_id=current_user.id,
-        document_id=doc.id,
         action="reject",
         entity_type="document",
-        entity_id=doc.id,
-        changes_summary=f"Document rejected during validation: {reason}",
+        entity_id=document_id,
+        changes_summary=f"Document rejected and deleted during validation: {reason}",
+        request=request,
+        document_id=document_id,
     )
-    db.add(audit_entry)
+
+    # Delete the document record (validation_rows cascade-deleted automatically)
+    db.delete(doc)
     db.commit()
 
-    logger.info(f"❌ Document {document_id} rejected by user {current_user.id}: {reason}")
+    logger.info(f"Document {document_id} rejected and deleted by user {current_user.id}: {reason}")
 
     return {
         "document_id": document_id,
-        "status": "failed",
-        "message": "Documento rejeitado.",
+        "status": "deleted",
+        "message": "Documento rejeitado e removido.",
     }
 
 
