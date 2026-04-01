@@ -92,9 +92,12 @@ limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
-# Uploads directory
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
+# Uploads directory (skip mkdir in Lambda — read-only filesystem, only /tmp is writable)
+UPLOAD_DIR = Path("/tmp/uploads") if os.environ.get("AWS_LAMBDA_FUNCTION_NAME") else Path("uploads")
+try:
+    UPLOAD_DIR.mkdir(exist_ok=True)
+except OSError:
+    pass  # Lambda read-only filesystem — S3 is used instead
 
 # Initialize processor
 processor = StructuredDocumentProcessor()
@@ -1932,6 +1935,75 @@ async def create_manual_document(
         raise HTTPException(
             status_code=400, detail=f"Erro ao criar documento manual: {str(e)}"
         )
+
+
+@router.post("/{document_id}/retry")
+async def retry_document(
+    document_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Manually retry processing a failed document.
+    Resets status to PENDING and sends to SQS for Lambda reprocessing.
+    """
+    doc = db.query(Document).filter(Document.id == document_id).first()
+
+    if not doc or not verify_document_access(doc, current_user, db):
+        raise HTTPException(status_code=404, detail=msg["document_not_found"])
+
+    if doc.status != DocumentStatus.FAILED:
+        raise HTTPException(
+            status_code=400,
+            detail="Apenas documentos com falha podem ser reprocessados.",
+        )
+
+    # Check file still exists in S3
+    if doc.file_path and settings.use_s3:
+        try:
+            s3_storage.s3_client.head_object(Bucket=s3_storage.bucket_name, Key=doc.file_path)
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail="Arquivo original não encontrado no S3. Faça upload novamente.",
+            )
+
+    # Reset status and clear error
+    doc.status = DocumentStatus.PENDING
+    doc.error_message = None
+    doc.retry_count = (doc.retry_count or 0) + 1
+    doc.max_retries_exhausted = False
+
+    # Delete old validation rows if any
+    db.query(DocumentValidationRow).filter(
+        DocumentValidationRow.document_id == document_id
+    ).delete()
+
+    db.commit()
+
+    # Send to SQS for reprocessing
+    _send_sqs_message(doc.id, doc.file_path)
+
+    log_audit_trail(
+        db=db,
+        user_id=current_user.id,
+        action="retry",
+        entity_type="document",
+        entity_id=document_id,
+        changes_summary=f"Document retry requested: {doc.file_name} (attempt {doc.retry_count})",
+        request=request,
+        document_id=document_id,
+    )
+
+    logger.info(f"Document {document_id} retry requested by user {current_user.id} (attempt {doc.retry_count})")
+
+    return {
+        "document_id": document_id,
+        "status": "pending",
+        "message": "Documento enviado para reprocessamento.",
+        "retry_count": doc.retry_count,
+    }
 
 
 @router.delete("/{document_id}")
