@@ -42,18 +42,16 @@ def get_plan_from_price_id(db: Session, price_id: str) -> Optional[Plan]:
     if settings.stripe_price_id_max:
         slug_map[settings.stripe_price_id_max] = "max"
 
-    slug = slug_map.get(price_id, "basic")
-    plan = get_plan_by_slug(db, slug)
-    if plan:
-        return plan
+    slug = slug_map.get(price_id)
+    if slug:
+        plan = get_plan_by_slug(db, slug)
+        if plan:
+            return plan
 
-    # Final fallback: default plan
-    default = get_default_plan(db)
-    if default:
-        return default
-
-    # Should never happen if migration ran
-    logger.error(f"No plan found for price_id={price_id}, no default plan in DB")
+    # Price ID not recognized — don't silently default to basic.
+    # Return None so the caller keeps the subscription's existing plan.
+    logger.warning(f"No plan mapping found for price_id={price_id}. "
+                   f"Set STRIPE_PRICE_ID_BASIC/PRO/MAX env vars or update plans.stripe_price_id in DB.")
     return None
 
 

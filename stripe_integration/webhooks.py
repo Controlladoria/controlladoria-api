@@ -83,11 +83,13 @@ def handle_checkout_completed(session: dict, db: Session):
 
 
 def _sync_plan_from_stripe(subscription: Subscription, sub: dict, db: Session):
-    """Sync plan_id and max_users from Stripe's price ID"""
+    """Sync plan_id and max_users from Stripe's price ID.
+    If the price ID can't be mapped to a plan, keeps the existing plan unchanged."""
     items = sub.get("items", {}).get("data", [])
     if items:
         price_id = items[0].get("price", {}).get("id", "")
         if price_id:
+            subscription.stripe_price_id = price_id
             plan = get_plan_from_price_id(db, price_id)
             if plan:
                 old_plan_slug = subscription.plan.slug if subscription.plan else None
@@ -97,7 +99,11 @@ def _sync_plan_from_stripe(subscription: Subscription, sub: dict, db: Session):
                     )
                 subscription.plan_id = plan.id
                 subscription.max_users = plan.max_users
-            subscription.stripe_price_id = price_id
+            else:
+                logger.warning(
+                    f"Could not map price_id={price_id} to a plan. "
+                    f"Keeping existing plan (id={subscription.plan_id}, max_users={subscription.max_users})."
+                )
 
 
 def handle_subscription_created(sub: dict, db: Session):
