@@ -6,10 +6,22 @@ Centralized settings for the application
 import os
 from typing import List
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+
+    @field_validator("cors_origins", "trusted_proxy_ips", "sysadmin_allowed_emails", "allowed_file_extensions", "allowed_mime_types", mode="before")
+    @classmethod
+    def parse_comma_separated_list(cls, v):
+        """Accept both JSON arrays and plain comma-separated strings for list fields."""
+        if isinstance(v, str):
+            v = v.strip()
+            if v.startswith("["):
+                return v  # Already JSON — let pydantic parse it
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return v
     """Application settings"""
 
     # Environment
