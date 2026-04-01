@@ -7,7 +7,7 @@ Usage:
     python scripts/make_admin.py <email>
 
 Example:
-    python scripts/make_admin.py admin@dresystem.com
+    python scripts/make_admin.py admin@controlladoria.com.br
 """
 
 import os
@@ -140,15 +140,15 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Make a user admin in DreSystem",
+        description="Make a user admin in ControlladorIA",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Promote existing user to admin
-  python scripts/make_admin.py admin@dresystem.com
+  python scripts/make_admin.py admin@controlladoria.com.br
 
   # Create new admin user if doesn't exist
-  python scripts/make_admin.py admin@dresystem.com --create
+  python scripts/make_admin.py admin@controlladoria.com.br --create
 
   # List all admin users
   python scripts/make_admin.py --list

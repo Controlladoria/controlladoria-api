@@ -11,11 +11,11 @@ version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: dresystem_postgres
+    container_name: controlladoria_postgres
     environment:
-      POSTGRES_USER: dresystem
-      POSTGRES_PASSWORD: dresystem_dev_2026
-      POSTGRES_DB: dresystem
+      POSTGRES_USER: controlladoria
+      POSTGRES_PASSWORD: controlladoria_dev_2026
+      POSTGRES_DB: controlladoria
       # Enable UTF-8 for Brazilian Portuguese support
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=pt_BR.UTF-8"
     ports:
@@ -24,7 +24,7 @@ services:
       # Persist data between container restarts
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dresystem"]
+      test: ["CMD-SHELL", "pg_isready -U controlladoria"]
       interval: 5s
       timeout: 5s
       retries: 5

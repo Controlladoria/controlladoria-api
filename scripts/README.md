@@ -1,6 +1,6 @@
 # Admin Scripts
 
-Utility scripts for DreSystem administration.
+Utility scripts for ControlladorIA administration.
 
 ## Make Admin Script
 
@@ -15,7 +15,7 @@ python scripts/make_admin.py user@example.com
 
 **Create new admin user (if doesn't exist):**
 ```bash
-python scripts/make_admin.py admin@dresystem.com --create
+python scripts/make_admin.py admin@controlladoria.com.br --create
 ```
 
 You'll be prompted for:
@@ -40,14 +40,14 @@ Promoting 'steve@company.com' to admin...
    Admin: True
 
 # Create new admin
-$ python scripts/make_admin.py admin@dresystem.com --create
-User 'admin@dresystem.com' not found. Creating new admin user...
+$ python scripts/make_admin.py admin@controlladoria.com.br --create
+User 'admin@controlladoria.com.br' not found. Creating new admin user...
 Enter password for new admin user: ********
 Confirm password: ********
 Enter full name (optional): System Administrator
-Enter company name (optional): DreSystem
+Enter company name (optional): ControlladorIA
 ✅ Admin user created successfully!
-   Email: admin@dresystem.com
+   Email: admin@controlladoria.com.br
    Name: System Administrator
    Admin: True
 
@@ -56,7 +56,7 @@ $ python scripts/make_admin.py --list
 
 📋 Admin Users (2):
 --------------------------------------------------------------------------------
-  Email: admin@dresystem.com
+  Email: admin@controlladoria.com.br
   Name: System Administrator
   Active: Yes
   Created: 2026-01-24

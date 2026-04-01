@@ -71,7 +71,7 @@ class TestEmailService:
             mock_send.return_value = {"id": "email_789"}
 
             result = await email_service.send_contact_notification(
-                admin_email="admin@dresystem.com",
+                admin_email="admin@controlladoria.com.br",
                 name="Cliente Teste",
                 email="cliente@empresa.com",
                 phone="(11) 98765-4321",
@@ -83,7 +83,7 @@ class TestEmailService:
 
             # Verify contact details in email
             call_args = mock_send.call_args[0][0]
-            assert call_args["to"] == ["admin@dresystem.com"]
+            assert call_args["to"] == ["admin@controlladoria.com.br"]
             assert "Cliente Teste" in call_args["html"]
             assert "cliente@empresa.com" in call_args["html"]
             assert "(11) 98765-4321" in call_args["html"]

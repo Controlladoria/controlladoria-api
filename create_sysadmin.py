@@ -5,7 +5,7 @@ Run this script to create your first sysadmin account.
 Only run this manually - never exposed via API.
 
 Usage:
-    python create_sysadmin.py --email you@dresystem.com --name "Your Name"
+    python create_sysadmin.py --email you@controlladoria.com.br --name "Your Name"
 """
 
 import argparse

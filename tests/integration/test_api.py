@@ -112,7 +112,7 @@ def test_stats():
 def run_tests():
     """Run all tests"""
     print("=" * 60)
-    print("DreSystem API Tests - Week 2")
+    print("ControlladorIA API Tests - Week 2")
     print("=" * 60)
     print()
 

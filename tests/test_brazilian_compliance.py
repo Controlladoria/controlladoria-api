@@ -215,7 +215,7 @@ def test_postgresql_utf8_ready():
     # SQLite uses UTF-8 by default
     # PostgreSQL connection should specify encoding (though it's default)
     # If using PostgreSQL, the connection string should be ready
-    test_pg_url = "postgresql://user:password@localhost:5432/dresystem"
+    test_pg_url = "postgresql://user:password@localhost:5432/controlladoria"
 
     # This would work with UTF-8 by default in PostgreSQL
     # Just verify the format is correct

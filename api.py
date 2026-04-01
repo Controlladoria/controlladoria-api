@@ -79,13 +79,13 @@ from database import (
 from email_service import email_service
 from exception_handlers import (
     database_exception_handler,
-    dresystem_exception_handler,
+    controlladoria_exception_handler,
     generic_exception_handler,
     http_exception_handler,
     rate_limit_exception_handler,
     validation_exception_handler,
 )
-from exceptions import DreSystemException
+from exceptions import ControlladorIAException
 from i18n import msg
 from middleware.subscription import require_active_subscription
 from models import (
@@ -157,7 +157,7 @@ app.state.limiter = limiter
 # =============================================================================
 
 # Register custom exception handlers
-app.add_exception_handler(DreSystemException, dresystem_exception_handler)
+app.add_exception_handler(ControlladorIAException, controlladoria_exception_handler)
 app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)
@@ -175,7 +175,7 @@ if settings.environment == "production":
         "https://controllad oria.com.br",
         "https://www.controllad oria.com.br",
         "https://admin.controllad oria.com.br",  # Sysadmin subdomain
-        "https://dre-system.vercel.app",  # Vercel production deployment
+        "https://app.controlladoria.com.br",  # Production customer app
     ]
 else:
     # Development: Allow both customer (3000) and sysadmin (3001) frontends
@@ -398,7 +398,7 @@ async def startup_event():
         raise RuntimeError(f"Database migration error: {e}")
 
     init_db()
-    logger.info("=== DreSystem API Started Successfully ===")
+    logger.info("=== ControlladorIA API Started Successfully ===")
     logger.info(f"Upload directory: {UPLOAD_DIR.absolute()}")
     logger.info(f"AI Provider: {os.getenv('AI_PROVIDER', 'openai')}")
     # Check JWT authentication (modern system), not legacy API_KEY
