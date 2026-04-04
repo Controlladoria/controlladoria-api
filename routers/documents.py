@@ -2532,8 +2532,16 @@ async def list_pending_validation_documents(
     total = query.count()
     docs = query.offset(skip).limit(limit).all()
 
+    # Also count docs still being processed (pending + processing)
+    processing_count = (
+        base_query
+        .filter(Document.status.in_([DocumentStatus.PENDING, DocumentStatus.PROCESSING]))
+        .count()
+    )
+
     return {
         "total": total,
+        "processing_count": processing_count,
         "documents": [
             {
                 "id": doc.id,
@@ -2829,32 +2837,23 @@ async def confirm_document_validation(
             detail="Documento não está pendente de validação.",
         )
 
-    # Mark all unvalidated rows as validated
-    rows = (
-        db.query(DocumentValidationRow)
-        .filter(
-            DocumentValidationRow.document_id == document_id,
-            DocumentValidationRow.is_validated == False,
-        )
-        .all()
-    )
-
+    # Bulk mark all unvalidated rows as validated (single SQL UPDATE, no Python loop)
     now = datetime.utcnow()
-    for row in rows:
-        row.is_validated = True
-        row.validated_at = now
+    db.query(DocumentValidationRow).filter(
+        DocumentValidationRow.document_id == document_id,
+        DocumentValidationRow.is_validated == False,
+    ).update({"is_validated": True, "validated_at": now}, synchronize_session="fetch")
 
-    # Update the extracted_data_json with any user modifications
-    all_rows = (
-        db.query(DocumentValidationRow)
-        .filter(DocumentValidationRow.document_id == document_id)
-        .order_by(DocumentValidationRow.row_index)
-        .all()
-    )
+    # Get row count for this document
+    total_row_count = db.query(func.count(DocumentValidationRow.id)).filter(
+        DocumentValidationRow.document_id == document_id
+    ).scalar() or 0
 
     # If this was a single-transaction doc, update the main fields
-    if len(all_rows) == 1:
-        row = all_rows[0]
+    if total_row_count == 1:
+        row = db.query(DocumentValidationRow).filter(
+            DocumentValidationRow.document_id == document_id
+        ).first()
         try:
             data = json.loads(doc.extracted_data_json) if doc.extracted_data_json else {}
             if row.category:
@@ -2870,45 +2869,71 @@ async def confirm_document_validation(
         except (json.JSONDecodeError, TypeError):
             pass
 
-    # If multi-transaction doc, update the transactions list and/or line_items
-    elif len(all_rows) > 1:
+    # If multi-transaction doc, compute totals with SQL aggregation (not Python loops)
+    elif total_row_count > 1:
         try:
             data = json.loads(doc.extracted_data_json) if doc.extracted_data_json else {}
             is_ledger = data.get("document_type") == "transaction_ledger"
 
             if is_ledger or not data.get("line_items"):
-                # Ledger or doc without line_items: write as transactions
+                # Use SQL aggregation for totals — avoid loading 2700 rows into Python
+                from sqlalchemy import case
+                totals = db.query(
+                    func.count(DocumentValidationRow.id).label("count"),
+                    func.sum(func.abs(DocumentValidationRow.amount)).label("total_sum"),
+                    func.sum(case(
+                        (DocumentValidationRow.transaction_type == "receita",
+                         func.abs(DocumentValidationRow.amount)),
+                        else_=0
+                    )).label("income_sum"),
+                    func.sum(case(
+                        (DocumentValidationRow.transaction_type != "receita",
+                         func.abs(DocumentValidationRow.amount)),
+                        else_=0
+                    )).label("expense_sum"),
+                ).filter(
+                    DocumentValidationRow.document_id == document_id
+                ).first()
+
+                item_count = totals.count or 0
+                total_sum = (totals.total_sum or 0) / 100.0
+                income_sum = (totals.income_sum or 0) / 100.0
+                expense_sum = (totals.expense_sum or 0) / 100.0
+
+                # Build transactions list in batches to avoid loading all at once
                 updated_transactions = []
-                total_sum = 0
-                item_count = 0
-                income_sum = 0
-                expense_sum = 0
-                for row in all_rows:
-                    amt = row.amount / 100.0 if row.amount is not None else 0
-                    updated_transactions.append({
-                        "date": row.transaction_date,
-                        "description": row.description,
-                        "category": row.category,
-                        "transaction_type": row.transaction_type,
-                        "amount": amt,
-                        "counterparty": row.counterparty if hasattr(row, 'counterparty') and row.counterparty else None,
-                    })
-                    total_sum += abs(amt)
-                    item_count += 1
-                    if row.transaction_type == "receita":
-                        income_sum += abs(amt)
-                    else:
-                        expense_sum += abs(amt)
+                batch_size = 500
+                offset = 0
+                while True:
+                    batch = (
+                        db.query(DocumentValidationRow)
+                        .filter(DocumentValidationRow.document_id == document_id)
+                        .order_by(DocumentValidationRow.row_index)
+                        .offset(offset).limit(batch_size)
+                        .all()
+                    )
+                    if not batch:
+                        break
+                    for row in batch:
+                        amt = row.amount / 100.0 if row.amount is not None else 0
+                        updated_transactions.append({
+                            "date": row.transaction_date,
+                            "description": row.description,
+                            "category": row.category,
+                            "transaction_type": row.transaction_type,
+                            "amount": amt,
+                            "counterparty": row.counterparty if hasattr(row, 'counterparty') and row.counterparty else None,
+                        })
+                    offset += batch_size
+                    db.expire_all()  # Free memory from previous batch
+
                 data["transactions"] = updated_transactions
-                # Update document-level totals from validated rows
                 data["total_amount"] = total_sum
                 data["total_items"] = item_count
-                # Update ledger summary fields (used by TransactionLedger model)
                 data["total_transactions"] = item_count
                 data["total_income"] = income_sum
                 data["total_expense"] = expense_sum
                 data["net_balance"] = income_sum - expense_sum
-                # Set document-level type from majority of transactions
                 data["transaction_type"] = "receita" if income_sum >= expense_sum else "despesa"
             else:
                 # NFe/invoice with line_items: rebuild line_items from rows 1+
