@@ -2937,25 +2937,36 @@ async def confirm_document_validation(
                 data["transaction_type"] = "receita" if income_sum >= expense_sum else "despesa"
             else:
                 # NFe/invoice with line_items: rebuild line_items from rows 1+
-                # Row 0 is the doc header, rows 1+ are items
-                updated_items = []
-                for row in all_rows[1:]:
-                    updated_items.append({
-                        "description": row.description or "",
-                        "total_price": row.amount / 100.0 if row.amount is not None else 0,
-                    })
-                data["line_items"] = updated_items
+                item_rows = (
+                    db.query(DocumentValidationRow)
+                    .filter(DocumentValidationRow.document_id == document_id)
+                    .order_by(DocumentValidationRow.row_index)
+                    .all()
+                )
+                if len(item_rows) > 1:
+                    updated_items = []
+                    for row in item_rows[1:]:
+                        updated_items.append({
+                            "description": row.description or "",
+                            "total_price": row.amount / 100.0 if row.amount is not None else 0,
+                        })
+                    data["line_items"] = updated_items
 
-                # Update header fields from row 0
-                header = all_rows[0]
-                if header.amount is not None:
-                    data["total_amount"] = header.amount / 100.0
-                if header.transaction_type:
-                    data["transaction_type"] = header.transaction_type
+                    # Update header fields from row 0
+                    header = item_rows[0]
+                    if header.amount is not None:
+                        data["total_amount"] = header.amount / 100.0
+                    if header.transaction_type:
+                        data["transaction_type"] = header.transaction_type
 
-            # Set document-level category from the first row (doc header)
-            first_row = all_rows[0]
-            if first_row.category:
+            # Set document-level category from the first row
+            first_row = (
+                db.query(DocumentValidationRow)
+                .filter(DocumentValidationRow.document_id == document_id)
+                .order_by(DocumentValidationRow.row_index)
+                .first()
+            )
+            if first_row and first_row.category:
                 data["category"] = first_row.category
                 doc.category = first_row.category
             doc.extracted_data_json = json.dumps(data, default=str)
@@ -2973,7 +2984,7 @@ async def confirm_document_validation(
         action="validate",
         entity_type="document",
         entity_id=doc.id,
-        changes_summary=f"Document validated and confirmed: {doc.file_name} ({len(all_rows)} rows)",
+        changes_summary=f"Document validated and confirmed: {doc.file_name} ({total_row_count} rows)",
     )
     db.add(audit_entry)
     db.commit()
