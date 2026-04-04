@@ -2993,16 +2993,22 @@ async def confirm_document_validation(
 
     # Upsert known items from validated rows (non-blocking)
     try:
-        _upsert_known_items_from_validation(db, current_user, all_rows)
+        all_validated_rows = (
+            db.query(DocumentValidationRow)
+            .filter(DocumentValidationRow.document_id == document_id)
+            .order_by(DocumentValidationRow.row_index)
+            .all()
+        )
+        _upsert_known_items_from_validation(db, current_user, all_validated_rows)
         owner_id = get_organization_owner_id(current_user)
         _prune_known_items(db, owner_id)
     except Exception as e:
-        logger.warning(f"⚠️ Known items processing failed (non-critical): {e}")
+        logger.warning(f"Known items processing failed (non-critical): {e}")
 
     return {
         "document_id": document_id,
         "status": "completed",
-        "message": f"Documento validado com sucesso! {len(all_rows)} linha(s) confirmada(s).",
+        "message": f"Documento validado com sucesso! {total_row_count} linha(s) confirmada(s).",
     }
 
 
@@ -3321,34 +3327,30 @@ async def get_known_matches(
     if not doc or not verify_document_access(doc, current_user, db):
         raise HTTPException(status_code=404, detail=msg["document_not_found"])
 
-    # Get validation rows
+    owner_id = get_organization_owner_id(current_user)
+
+    # Load ALL known items for this user ONCE (single query)
+    known_items = db.query(KnownItem).filter(KnownItem.user_id == owner_id).all()
+    known_map = {item.name: item for item in known_items}
+
+    # Get only descriptions + ids from validation rows (lightweight — no full ORM load)
     rows = (
-        db.query(DocumentValidationRow)
+        db.query(DocumentValidationRow.id, DocumentValidationRow.description)
         .filter(DocumentValidationRow.document_id == document_id)
-        .order_by(DocumentValidationRow.row_index)
         .all()
     )
 
-    owner_id = get_organization_owner_id(current_user)
-
-    # For each row, try to find a matching known item
+    # Match in Python — 0 additional DB queries
     matches = {}
-    for row in rows:
-        if not row.description:
+    for row_id, description in rows:
+        if not description:
             continue
-
-        normalized = _normalize_known_item_name(row.description)
+        normalized = _normalize_known_item_name(description)
         if not normalized:
             continue
-
-        known = (
-            db.query(KnownItem)
-            .filter(KnownItem.user_id == owner_id, KnownItem.name == normalized)
-            .first()
-        )
-
+        known = known_map.get(normalized)
         if known:
-            matches[str(row.id)] = {
+            matches[str(row_id)] = {
                 "known_item_id": known.id,
                 "alias": known.alias,
                 "category": known.category,
