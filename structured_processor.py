@@ -811,7 +811,21 @@ class StructuredDocumentProcessor:
                 else:
                     # Large file — process in chunks and merge results
                     logger.debug(f"Large Excel ({total_rows} rows) -- chunking into ~{CHUNK_THRESHOLD}-row batches")
-                    structured_data = self._process_excel_chunked(all_dfs, excel_path.name)
+                    structured_data = self._process_excel_chunked(
+                        all_dfs, excel_path.name,
+                        on_chunk_complete=getattr(self, '_on_chunk_complete', None),
+                        skip_chunks=getattr(self, '_skip_chunks', None),
+                        should_stop=getattr(self, '_should_stop', None),
+                    )
+
+                # None = partial completion (timeout/resume) — rows already saved by callback
+                if structured_data is None:
+                    return {
+                        "file_name": excel_path.name,
+                        "file_type": "excel",
+                        "status": "partial",
+                        "extracted_data": None,
+                    }
 
                 # Validate AI result has usable data
                 ai_success = False
@@ -987,13 +1001,18 @@ class StructuredDocumentProcessor:
 
         return "\n".join(text_parts)
 
-    def _process_excel_chunked(self, all_dfs: list, filename: str):
+    def _process_excel_chunked(self, all_dfs: list, filename: str,
+                                on_chunk_complete=None, skip_chunks=None,
+                                should_stop=None):
         """
         Process a large Excel file by splitting into chunks, extracting each
         chunk with AI IN PARALLEL, and merging the results into a single TransactionLedger.
 
-        Chunks are distributed across providers (round-robin) and run concurrently
-        using ThreadPoolExecutor. With 3 providers, 3 chunks run at once.
+        Args:
+            on_chunk_complete: Optional callback(chunk_index, transactions_list) called
+                after each chunk succeeds. Used by Lambda to save rows incrementally.
+            skip_chunks: Optional set of chunk indices to skip (already processed on previous run).
+            should_stop: Optional callable() that returns True if we should stop (Lambda timeout).
         """
         import pandas as pd
         from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1090,13 +1109,41 @@ class StructuredDocumentProcessor:
                 self.ai_provider = original
                 self._thread_local._chunk_prompt = None  # Clear so non-chunk calls use normal prompt
 
+        # Filter out already-completed chunks (resume support)
+        if skip_chunks:
+            chunks = [c for c in chunks if c[0] not in skip_chunks]
+            logger.info(f"  Resuming: skipping {len(skip_chunks)} already-completed chunks, {len(chunks)} remaining")
+
+        if not chunks:
+            # All chunks already done from previous run — return empty, caller will finalize
+            return None
+
         # Run chunks in parallel — max_workers threads at once
         all_results = {}
+        stopped_early = False
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(process_chunk, chunk): chunk[0] for chunk in chunks}
             for future in as_completed(futures):
                 idx, transactions, error = future.result()
                 all_results[idx] = transactions
+
+                # Call the save callback for each completed chunk
+                if transactions and on_chunk_complete:
+                    try:
+                        on_chunk_complete(idx, transactions)
+                    except Exception as e:
+                        logger.warning(f"  Chunk {idx} save callback failed: {e}")
+
+                # Check if we should stop (Lambda timeout approaching)
+                if should_stop and should_stop():
+                    logger.info(f"  Stopping early — timeout approaching. Completed {len(all_results)} of {len(chunks)} chunks.")
+                    stopped_early = True
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    break
+
+        if stopped_early:
+            # Return None to signal partial completion — caller handles finalization
+            return None
 
         # Merge in original chunk order (important for row ordering)
         all_transactions = []

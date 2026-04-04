@@ -949,6 +949,53 @@ async def upload_document(
     if file_ext not in settings.allowed_file_extensions:
         raise HTTPException(status_code=400, detail=msg["unsupported_file_type"])
 
+    # --- Spreadsheet plan limits (behind release toggle) ---
+    is_spreadsheet = file_ext in [".xlsx", ".xls", ".csv"]
+    if is_spreadsheet and settings.enable_plan_limits:
+        plan = subscription.plan
+        plan_features = plan.features if plan else {}
+
+        # Check monthly spreadsheet count
+        max_spreadsheets = plan_features.get("max_spreadsheets_per_month")
+        if max_spreadsheets is not None:
+            from datetime import datetime
+            month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            spreadsheet_count = (
+                db.query(func.count(Document.id))
+                .filter(
+                    Document.user_id == current_user.id,
+                    Document.file_type.in_(["xlsx", "xls", "csv"]),
+                    Document.upload_date >= month_start,
+                )
+                .scalar() or 0
+            )
+            if spreadsheet_count >= max_spreadsheets:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Limite de {max_spreadsheets} planilhas/mês atingido no plano {plan.display_name}. Faça upgrade para enviar mais.",
+                )
+
+        # Check max rows per spreadsheet
+        max_rows = plan_features.get("max_spreadsheet_rows")
+        if max_rows is not None:
+            try:
+                import pandas as pd
+                import io as _io
+                xls = pd.ExcelFile(_io.BytesIO(contents))
+                total_rows = sum(
+                    pd.read_excel(xls, sheet_name=sheet).shape[0]
+                    for sheet in xls.sheet_names
+                )
+                if total_rows > max_rows:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Esta planilha tem {total_rows:,} linhas. O plano {plan.display_name} suporta até {max_rows:,} linhas. Faça upgrade para processar arquivos maiores.",
+                    )
+            except HTTPException:
+                raise
+            except Exception:
+                pass  # Can't count rows — let it through, AI will handle it
+
     # Validate MIME type if python-magic is available
     if MAGIC_AVAILABLE:
         try:
