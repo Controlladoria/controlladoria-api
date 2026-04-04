@@ -958,7 +958,6 @@ async def upload_document(
         # Check monthly spreadsheet count
         max_spreadsheets = plan_features.get("max_spreadsheets_per_month")
         if max_spreadsheets is not None:
-            from datetime import datetime
             month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             spreadsheet_count = (
                 db.query(func.count(Document.id))
