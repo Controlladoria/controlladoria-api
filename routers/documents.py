@@ -2598,6 +2598,8 @@ async def list_pending_validation_documents(
                 "category": doc.category,
                 "validation_row_count": len(doc.validation_rows),
                 "validated_count": sum(1 for r in doc.validation_rows if r.is_validated),
+                "cnpj_mismatch": doc.cnpj_mismatch or False,
+                "cnpj_warning_message": doc.cnpj_warning_message,
             }
             for doc in docs
         ],

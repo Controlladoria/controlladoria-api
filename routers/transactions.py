@@ -1442,12 +1442,19 @@ async def get_financial_indicators(
     reference_date: Optional[str] = Query(
         None, description="Reference date (YYYY-MM-DD). Defaults to today"
     ),
+    period_type: str = Query(
+        "month", description="Period type: day, week, month, year, custom"
+    ),
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD) for custom period"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD) for custom period"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """
     Calculate financial indicators (KPIs) from DRE and Balance Sheet data.
     Returns margins, liquidity ratios, leverage ratios, and profitability ratios.
+
+    Now supports period_type parameter to match the unified date picker.
     """
     from datetime import date as date_type, datetime
     from decimal import Decimal
@@ -1466,8 +1473,23 @@ async def get_financial_indicators(
 
     org_id = getattr(current_user, '_active_org_id', None) or getattr(current_user, 'active_org_id', None)
 
-    # Get DRE data for the month
-    period_start, period_end = get_period_dates(PeriodType.MONTH, ref_date)
+    # Parse period type — indicators now respect the same period as DRE
+    try:
+        period_enum = PeriodType(period_type.lower())
+    except ValueError:
+        period_enum = PeriodType.MONTH
+
+    if period_enum == PeriodType.CUSTOM:
+        if start_date and end_date:
+            try:
+                period_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+                period_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+            except ValueError:
+                period_start, period_end = get_period_dates(PeriodType.MONTH, ref_date)
+        else:
+            period_start, period_end = get_period_dates(PeriodType.MONTH, ref_date)
+    else:
+        period_start, period_end = get_period_dates(period_enum, ref_date)
 
     # Fetch transactions from completed documents (expands multi-row ledgers) - org-scoped
     documents = document_org_filter(
@@ -1480,7 +1502,7 @@ async def get_financial_indicators(
 
     dre = calculate_dre(
         transactions=transactions,
-        period_type=PeriodType.MONTH,
+        period_type=period_enum,
         start_date=period_start,
         end_date=period_end,
         company_name=current_user.company_name,
@@ -1762,6 +1784,126 @@ async def get_cash_flow(
         "cash_beginning": float(cash_flow.cash_beginning),
         "cash_ending": float(cash_flow.cash_ending),
     }
+
+
+@router.get("/reports/cash-flow/detailed")
+async def get_cash_flow_detailed(
+    period_type: str = Query(
+        "month", description="Period type: day, week, month, year, custom"
+    ),
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    reference_date: Optional[str] = Query(None, description="Reference date"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get detailed daily cash flow breakdown.
+
+    Returns DRE-like daily breakdown (daily_dre), bank entries,
+    and monthly totals. Matches the ControlladorIA template structure.
+    For day period_type, also includes raw transaction list.
+    """
+    from accounting import PeriodType, get_period_dates
+    from accounting.cash_flow_daily import DailyCashFlowCalculator
+
+    # Parse period
+    try:
+        period_enum = PeriodType(period_type.lower())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid period_type")
+
+    if period_enum == PeriodType.CUSTOM:
+        if not start_date or not end_date:
+            raise HTTPException(
+                status_code=400,
+                detail="start_date and end_date required for custom period",
+            )
+        try:
+            period_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+            period_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format")
+    else:
+        ref_date = (
+            datetime.strptime(reference_date, "%Y-%m-%d").date()
+            if reference_date
+            else date.today()
+        )
+        period_start, period_end = get_period_dates(period_enum, ref_date)
+
+    # Get transactions from completed documents
+    documents = document_org_filter(
+        db.query(Document), current_user, db
+    ).filter(
+        Document.status == DocumentStatus.COMPLETED,
+        Document.extracted_data_json.isnot(None),
+    ).all()
+    transactions = _extract_transactions_from_documents(documents)
+
+    # Get initial bank balances from OrgInitialBalance
+    from database import OrgInitialBalance
+    from decimal import Decimal
+
+    org_id = getattr(current_user, '_active_org_id', None) or getattr(current_user, 'active_org_id', None)
+    initial_bank_balances = {}
+    if org_id:
+        initial_balance = (
+            db.query(OrgInitialBalance)
+            .filter(
+                OrgInitialBalance.organization_id == org_id,
+                OrgInitialBalance.is_completed == True,
+                OrgInitialBalance.reference_date <= period_start,
+            )
+            .order_by(OrgInitialBalance.reference_date.desc())
+            .first()
+        )
+        if initial_balance:
+            if initial_balance.cash_and_equivalents:
+                initial_bank_balances["Principal"] = Decimal(str(initial_balance.cash_and_equivalents))
+            if initial_balance.bank_account_balances:
+                for entry in initial_balance.bank_account_balances:
+                    bank_name = entry.get("bank_name") or entry.get("name") or "Banco"
+                    balance = entry.get("balance", 0)
+                    initial_bank_balances[bank_name] = Decimal(str(balance))
+
+    # Calculate daily cash flow
+    calculator = DailyCashFlowCalculator()
+    daily_cf = calculator.calculate(
+        transactions=transactions,
+        start_date=period_start,
+        end_date=period_end,
+        company_name=current_user.company_name,
+        cnpj=current_user.cnpj,
+        initial_bank_balances=initial_bank_balances if initial_bank_balances else None,
+    )
+
+    result = daily_cf.to_dict()
+    result["period_type"] = period_type
+
+    # For day view, include raw transactions for that day
+    if period_enum == PeriodType.DAY:
+        day_transactions = []
+        day_key = period_start.isoformat()
+        for txn in transactions:
+            txn_date = txn.get("date")
+            if txn_date is None:
+                continue
+            if isinstance(txn_date, str):
+                txn_date_str = txn_date[:10]
+            else:
+                txn_date_str = txn_date.isoformat()[:10] if hasattr(txn_date, 'isoformat') else str(txn_date)[:10]
+            if txn_date_str == day_key:
+                day_transactions.append({
+                    "date": txn_date_str,
+                    "description": txn.get("description", ""),
+                    "category": txn.get("category", ""),
+                    "amount": float(txn.get("amount", 0) or 0),
+                    "transaction_type": txn.get("transaction_type", ""),
+                })
+        result["transactions"] = day_transactions
+
+    return result
 
 
 @router.get("/reports/cash-flow/export/pdf")

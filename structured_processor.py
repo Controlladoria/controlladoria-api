@@ -553,6 +553,11 @@ class StructuredDocumentProcessor:
             else:
                 raise ValueError(f"Unsupported file type: {extension}")
 
+            # Post-extraction: enforce category→transaction_type consistency
+            # The AI prompt instructs correct mapping, but we enforce it
+            # programmatically to guarantee Plano de Contas compliance.
+            self._enforce_category_types(result)
+
             return result
 
         finally:
@@ -562,6 +567,67 @@ class StructuredDocumentProcessor:
                     Path(temp_file.name).unlink(missing_ok=True)
                 except Exception as e:
                     logger.warning(f"Failed to delete temp file {temp_file.name}: {e}")
+
+    def _enforce_category_types(self, result: dict) -> None:
+        """Enforce category→transaction_type consistency per Plano de Contas.
+
+        Mutates the extracted_data in-place. If a category is known (e.g. 'insumos'),
+        the transaction_type is forced to match its nature ('custo'), regardless of
+        what the AI returned.
+        """
+        from accounting.categories import enforce_category_type
+
+        extracted = result.get("extracted_data")
+        if extracted is None:
+            return
+
+        # Document-level enforcement
+        doc_cat = getattr(extracted, "category", None)
+        doc_type = getattr(extracted, "transaction_type", None)
+        if doc_cat and doc_type:
+            corrected = enforce_category_type(doc_cat, doc_type)
+            if corrected != doc_type:
+                logger.info(
+                    f"Category enforcement: document category='{doc_cat}' "
+                    f"type '{doc_type}' → '{corrected}'"
+                )
+                extracted.transaction_type = corrected
+
+        # Line items enforcement
+        line_items = getattr(extracted, "line_items", None)
+        if line_items:
+            for item in line_items:
+                item_cat = item.get("category") if isinstance(item, dict) else getattr(item, "category", None)
+                item_type = item.get("transaction_type") if isinstance(item, dict) else getattr(item, "transaction_type", None)
+                if item_cat and item_type:
+                    corrected = enforce_category_type(item_cat, item_type)
+                    if corrected != item_type:
+                        logger.debug(
+                            f"Category enforcement: line_item category='{item_cat}' "
+                            f"type '{item_type}' → '{corrected}'"
+                        )
+                        if isinstance(item, dict):
+                            item["transaction_type"] = corrected
+                        else:
+                            item.transaction_type = corrected
+
+        # Transactions (multi-row ledgers) enforcement
+        transactions = getattr(extracted, "transactions", None)
+        if transactions:
+            for txn in transactions:
+                txn_cat = txn.get("category") if isinstance(txn, dict) else getattr(txn, "category", None)
+                txn_type = txn.get("transaction_type") if isinstance(txn, dict) else getattr(txn, "transaction_type", None)
+                if txn_cat and txn_type:
+                    corrected = enforce_category_type(txn_cat, txn_type)
+                    if corrected != txn_type:
+                        logger.debug(
+                            f"Category enforcement: transaction category='{txn_cat}' "
+                            f"type '{txn_type}' → '{corrected}'"
+                        )
+                        if isinstance(txn, dict):
+                            txn["transaction_type"] = corrected
+                        else:
+                            txn.transaction_type = corrected
 
     def _process_image(self, image_path: Path) -> dict:
         """Process a single image file"""
