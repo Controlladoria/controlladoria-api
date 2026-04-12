@@ -551,20 +551,16 @@ async def extract_cnpj_from_card(request: Request):
             tmp.write(content)
             tmp_path = tmp.name
 
-        # Extract CNPJ using AI (key pool for round-robin + failover)
+        # Extract CNPJ using AI (key pool for round-robin + failover across all providers)
         from ai_key_pool import get_next_ai_credentials
-        from structured_processor import StructuredDocumentProcessor
-        # Get processor instance to access key pool (it's a module-level singleton)
         import routers.documents as docs_router
         _pool = getattr(getattr(docs_router, 'processor', None), 'key_pool', None)
-        if _pool:
-            _provider, _api_key, _model = get_next_ai_credentials(
-                _pool, preferred_provider=settings.ai_provider
-            )
-        else:
-            _provider = settings.ai_provider
-            _api_key = settings.openai_api_key if _provider == "openai" else settings.anthropic_api_key
-            _model = settings.openai_model if _provider == "openai" else settings.anthropic_model
+        if _pool is None:
+            from structured_processor import StructuredDocumentProcessor
+            _pool = StructuredDocumentProcessor().key_pool
+        _provider, _api_key, _model = get_next_ai_credentials(
+            _pool, preferred_provider=settings.ai_provider
+        )
         recipient_cnpj, sender_cnpj = extract_cnpj_from_document(
             tmp_path,
             ai_provider=_provider,
