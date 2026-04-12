@@ -247,11 +247,12 @@ def get_next_ai_credentials(
     Tries preferred_provider first, then falls back to any available provider.
     Raises ValueError if no keys are available.
     """
-    # Try preferred provider first
+    # Try preferred providers in order (supports comma-separated: "gemini,nova,openai")
     if preferred_provider:
-        state = key_pool.get_next_key(preferred_provider)
-        if state:
-            return state.provider, state.key, state.model
+        for p in [x.strip() for x in preferred_provider.split(",") if x.strip()]:
+            state = key_pool.get_next_key(p)
+            if state:
+                return state.provider, state.key, state.model
 
     # Fallback: try all providers
     for provider in key_pool.get_all_providers():
