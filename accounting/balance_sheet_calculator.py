@@ -473,16 +473,17 @@ class BalanceSheetCalculator:
             ))
 
         # Lucro ou prejuízo do exercício = plug number to balance the sheet
+        # Merge with existing retained earnings from document-based calculation
         retained = equity_initial - capital_social - reserves
         if retained != Decimal("0"):
             bs.patrimonio_liquido += retained
-            if retained > Decimal("0"):
-                bs.equity_lines.append(BalanceSheetLine(
-                    code="3.04.001", name="Lucro ou prejuízo do exercício", balance=retained, level=2
-                ))
+            existing_re = next((l for l in bs.equity_lines if l.code == "3.04.001"), None)
+            if existing_re:
+                existing_re.balance += retained
             else:
                 bs.equity_lines.append(BalanceSheetLine(
-                    code="3.04.002", name="Lucro ou prejuízo do exercício", balance=retained, level=2
+                    code="3.04.001", name="Lucros/Prejuízos Acumulados",
+                    balance=retained, level=2
                 ))
 
     def _populate_from_journal_entries(self, bs: BalanceSheet, accounts: List[Dict]):
@@ -619,34 +620,46 @@ class BalanceSheetCalculator:
         net_result = total_income - total_expenses
 
         if net_result > Decimal("0"):
-            # Positive: company has net cash
-            # Assets = net_result (cash), PL = net_result (retained earnings)
-            # Balance: net_result = 0 + net_result ✓
-            bs.ativo_circulante = net_result
-            bs.asset_lines.append(BalanceSheetLine(
-                code="1.01.001", name="Caixa e Equivalentes de Caixa",
-                balance=net_result, level=2
-            ))
-            bs.patrimonio_liquido = net_result
-            bs.equity_lines.append(BalanceSheetLine(
-                code="3.04.001", name="Lucros Acumulados",
-                balance=net_result, level=2
-            ))
+            bs.ativo_circulante += net_result
+            # Merge into existing cash line or create new
+            existing_cash = next((l for l in bs.asset_lines if l.code == "1.01.001"), None)
+            if existing_cash:
+                existing_cash.balance += net_result
+            else:
+                bs.asset_lines.append(BalanceSheetLine(
+                    code="1.01.001", name="Caixa e Equivalentes de Caixa",
+                    balance=net_result, level=2
+                ))
+            # Merge into existing retained earnings or create new
+            bs.patrimonio_liquido += net_result
+            existing_re = next((l for l in bs.equity_lines if l.code == "3.04.001"), None)
+            if existing_re:
+                existing_re.balance += net_result
+            else:
+                bs.equity_lines.append(BalanceSheetLine(
+                    code="3.04.001", name="Lucros/Prejuízos Acumulados",
+                    balance=net_result, level=2
+                ))
         elif net_result < Decimal("0"):
-            # Negative: company has accumulated losses
-            # Assets = 0 (no cash), Liabilities = |net_result|, PL = net_result
-            # Balance: 0 = |net_result| + net_result = 0 ✓
             abs_deficit = abs(net_result)
-            bs.passivo_circulante = abs_deficit
-            bs.liability_lines.append(BalanceSheetLine(
-                code="2.01.005", name="Obrigações a Pagar (Déficit Operacional)",
-                balance=abs_deficit, level=2
-            ))
-            bs.patrimonio_liquido = net_result
-            bs.equity_lines.append(BalanceSheetLine(
-                code="3.04.001", name="Lucro ou prejuízo do exercício",
-                balance=net_result, level=2
-            ))
+            bs.passivo_circulante += abs_deficit
+            existing_ob = next((l for l in bs.liability_lines if l.code == "2.01.005"), None)
+            if existing_ob:
+                existing_ob.balance += abs_deficit
+            else:
+                bs.liability_lines.append(BalanceSheetLine(
+                    code="2.01.005", name="Obrigações a Pagar",
+                    balance=abs_deficit, level=2
+                ))
+            bs.patrimonio_liquido += net_result
+            existing_re = next((l for l in bs.equity_lines if l.code == "3.04.001"), None)
+            if existing_re:
+                existing_re.balance += net_result
+            else:
+                bs.equity_lines.append(BalanceSheetLine(
+                    code="3.04.001", name="Lucros/Prejuízos Acumulados",
+                    balance=net_result, level=2
+                ))
 
     def _get_account_balances(self, reference_date: date) -> List[Dict]:
         """

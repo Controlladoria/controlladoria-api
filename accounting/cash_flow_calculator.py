@@ -74,6 +74,13 @@ class CashFlowCalculator:
     ) -> CashFlow:
         """Calculate cash flow: Entradas, Saídas, Saldo."""
         from accounting import is_income_type
+        from accounting.categories import DRE_CATEGORIES, DRELineType, resolve_category_name
+
+        # Non-cash categories — excluded from cash flow entirely
+        NON_CASH_CATEGORIES = {"depreciacao", "amortizacao"}
+
+        # Deduction categories — shown as negative entradas (reduce income), not saídas
+        DEDUCTION_CATEGORIES = {"impostos_sobre_vendas", "devolucoes", "descontos_concedidos"}
 
         transactions = self._get_transactions(start_date, end_date)
 
@@ -85,15 +92,25 @@ class CashFlowCalculator:
 
         for txn in transactions:
             amount = Decimal(str(txn.get("amount", 0) or 0))
-            category = txn.get("category", "nao_categorizado") or "nao_categorizado"
+            raw_category = txn.get("category", "nao_categorizado") or "nao_categorizado"
+            resolved_category = resolve_category_name(raw_category)
             txn_type = txn.get("transaction_type", "")
 
-            if is_income_type(txn_type):
+            # Skip non-cash items (depreciation, amortization don't affect cash)
+            if resolved_category in NON_CASH_CATEGORIES:
+                continue
+
+            # Deductions (devoluções, impostos sobre vendas, descontos concedidos)
+            # are negative entradas — they reduce income, not increase expenses
+            if resolved_category in DEDUCTION_CATEGORIES:
+                total_entradas -= amount  # subtract from entradas
+                entradas_by_cat[raw_category] = entradas_by_cat.get(raw_category, Decimal("0")) - amount
+            elif is_income_type(txn_type):
                 total_entradas += amount
-                entradas_by_cat[category] = entradas_by_cat.get(category, Decimal("0")) + amount
+                entradas_by_cat[raw_category] = entradas_by_cat.get(raw_category, Decimal("0")) + amount
             else:
                 total_saidas += amount
-                saidas_by_cat[category] = saidas_by_cat.get(category, Decimal("0")) + amount
+                saidas_by_cat[raw_category] = saidas_by_cat.get(raw_category, Decimal("0")) + amount
 
         # Build readable line items (top categories)
         entradas_items = {

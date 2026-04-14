@@ -210,6 +210,9 @@ class DRECalculator:
         Aggregate transactions by category.
         Resolves legacy V1 category names to V2 canonical names via aliases.
 
+        Amounts are preserved as-is (negative values = refunds/corrections).
+        The DRE calculation sections handle the sign logic (revenue adds, costs subtract).
+
         Returns:
             Dict with category as key and {total: Decimal, count: int, transactions: List} as value
         """
@@ -219,25 +222,16 @@ class DRECalculator:
 
         for t in transactions:
             category = t.get("category") or "uncategorized"
-            # Handle None category
             if category is None:
                 category = "uncategorized"
-            # Resolve to canonical V2 name (handles aliases)
             category = resolve_category_name(category)
 
-            amount = t.get("amount", Decimal("0"))
-            transaction_type = t.get("transaction_type", "despesa").lower()
+            amount = Decimal(str(t.get("amount", 0) or 0))
 
-            # Apply sign based on transaction type
-            # Income (receita) = positive contribution
-            # Expense, Custo, Investimento, Perda = negative contribution
-            from accounting import is_income_type
-            if is_income_type(transaction_type):
-                signed_amount = abs(amount)
-            else:  # expense, gasto, investimento
-                signed_amount = abs(amount)
-
-            aggregated[category]["total"] += signed_amount
+            # Preserve original amount including sign.
+            # Negative amounts (refunds, corrections, cancellations) naturally
+            # reduce the category total — e.g., a -500 receita reduces revenue.
+            aggregated[category]["total"] += amount
             aggregated[category]["count"] += 1
             aggregated[category]["transactions"].append(t)
 
