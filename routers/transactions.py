@@ -13,6 +13,8 @@ import logging
 from calendar import monthrange
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+
+from config import now_brazil
 from io import BytesIO
 from typing import Optional
 
@@ -571,7 +573,7 @@ async def export_to_excel(
     date_range = (
         f"{date_from}_to_{date_to}"
         if date_from and date_to
-        else datetime.now().strftime("%Y%m%d")
+        else now_brazil().strftime("%Y%m%d")
     )
     filename = f"transacoes_{date_range}.xlsx"
 
@@ -779,7 +781,7 @@ async def export_to_pdf(
     date_range = (
         f"{date_from}_to_{date_to}"
         if date_from and date_to
-        else datetime.now().strftime("%Y%m%d")
+        else now_brazil().strftime("%Y%m%d")
     )
     filename = f"relatorio_financeiro_{date_range}.pdf"
 
@@ -870,7 +872,7 @@ async def get_dre_report(
                     detail="Invalid reference_date format. Use YYYY-MM-DD",
                 )
         else:
-            ref_date = date.today()
+            ref_date = now_brazil().date()
 
         period_start, period_end = get_period_dates(period_enum, ref_date)
 
@@ -946,7 +948,7 @@ async def export_dre_to_pdf_endpoint(
         ref_date = (
             datetime.strptime(reference_date, "%Y-%m-%d").date()
             if reference_date
-            else date.today()
+            else now_brazil().date()
         )
         period_start, period_end = get_period_dates(period_enum, ref_date)
 
@@ -1064,7 +1066,7 @@ async def export_dre_to_excel_endpoint(
         ref_date = (
             datetime.strptime(reference_date, "%Y-%m-%d").date()
             if reference_date
-            else date.today()
+            else now_brazil().date()
         )
         period_start, period_end = get_period_dates(period_enum, ref_date)
 
@@ -1179,7 +1181,7 @@ async def export_dre_to_csv_endpoint(
         ref_date = (
             datetime.strptime(reference_date, "%Y-%m-%d").date()
             if reference_date
-            else date.today()
+            else now_brazil().date()
         )
         period_start, period_end = get_period_dates(period_enum, ref_date)
 
@@ -1253,7 +1255,7 @@ async def get_balance_sheet(
                 status_code=400, detail="Invalid reference_date format. Use YYYY-MM-DD"
             )
     else:
-        ref_date = date.today()
+        ref_date = now_brazil().date()
 
     # Calculate balance sheet
     calculator = BalanceSheetCalculator(db, current_user.id, org_id=getattr(current_user, '_active_org_id', None) or current_user.active_org_id)
@@ -1300,7 +1302,7 @@ async def export_balance_sheet_pdf(
                 status_code=400, detail="Invalid reference_date format. Use YYYY-MM-DD"
             )
     else:
-        ref_date = date.today()
+        ref_date = now_brazil().date()
 
     # Calculate balance sheet
     calculator = BalanceSheetCalculator(db, current_user.id, org_id=getattr(current_user, '_active_org_id', None) or current_user.active_org_id)
@@ -1357,7 +1359,7 @@ async def export_balance_sheet_excel(
                 status_code=400, detail="Invalid reference_date format. Use YYYY-MM-DD"
             )
     else:
-        ref_date = date.today()
+        ref_date = now_brazil().date()
 
     # Calculate balance sheet
     calculator = BalanceSheetCalculator(db, current_user.id, org_id=getattr(current_user, '_active_org_id', None) or current_user.active_org_id)
@@ -1411,7 +1413,7 @@ async def export_balance_sheet_csv(
                 status_code=400, detail="Invalid reference_date format. Use YYYY-MM-DD"
             )
     else:
-        ref_date = date.today()
+        ref_date = now_brazil().date()
 
     # Calculate balance sheet
     calculator = BalanceSheetCalculator(db, current_user.id, org_id=getattr(current_user, '_active_org_id', None) or current_user.active_org_id)
@@ -1744,7 +1746,7 @@ async def get_cash_flow(
         ref_date = (
             datetime.strptime(reference_date, "%Y-%m-%d").date()
             if reference_date
-            else date.today()
+            else now_brazil().date()
         )
         period_start, period_end = get_period_dates(period_enum, ref_date)
 
@@ -1828,7 +1830,7 @@ async def get_cash_flow_detailed(
         ref_date = (
             datetime.strptime(reference_date, "%Y-%m-%d").date()
             if reference_date
-            else date.today()
+            else now_brazil().date()
         )
         period_start, period_end = get_period_dates(period_enum, ref_date)
 
@@ -1951,7 +1953,7 @@ async def export_cash_flow_pdf(
         ref_date = (
             datetime.strptime(reference_date, "%Y-%m-%d").date()
             if reference_date
-            else date.today()
+            else now_brazil().date()
         )
         period_start, period_end = get_period_dates(period_enum, ref_date)
 
@@ -2025,7 +2027,7 @@ async def export_cash_flow_excel(
         ref_date = (
             datetime.strptime(reference_date, "%Y-%m-%d").date()
             if reference_date
-            else date.today()
+            else now_brazil().date()
         )
         period_start, period_end = get_period_dates(period_enum, ref_date)
 
@@ -2099,7 +2101,7 @@ async def export_cash_flow_csv(
         ref_date = (
             datetime.strptime(reference_date, "%Y-%m-%d").date()
             if reference_date
-            else date.today()
+            else now_brazil().date()
         )
         period_start, period_end = get_period_dates(period_enum, ref_date)
 
@@ -2158,7 +2160,7 @@ async def get_trial_balance(
                 status_code=400, detail="Invalid reference_date format. Use YYYY-MM-DD"
             )
     else:
-        ref_date = date.today()
+        ref_date = now_brazil().date()
 
     # Get trial balance
     calculator = BalanceSheetCalculator(db, current_user.id, org_id=getattr(current_user, '_active_org_id', None) or current_user.active_org_id)

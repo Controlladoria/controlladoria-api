@@ -18,6 +18,8 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Dict, List, Optional
 
+from config import now_brazil
+
 logger = logging.getLogger(__name__)
 
 from .categories import (
@@ -864,7 +866,7 @@ def get_period_dates(
         Tuple of (start_date, end_date)
     """
     if reference_date is None:
-        reference_date = date.today()
+        reference_date = now_brazil().date()
 
     if period_type == PeriodType.DAY:
         return (reference_date, reference_date)
