@@ -2210,9 +2210,28 @@ async def update_document(
         department = data_dict.get("department")
         category = data_dict.get("category")
 
-        # Update the extracted data
-        doc.extracted_data_json = data.model_dump_json()
-        doc.processed_date = datetime.utcnow()  # Update timestamp
+        # Recalculate totals from transactions (user may have added/edited/removed rows)
+        transactions = data_dict.get("transactions")
+        if transactions and isinstance(transactions, list) and len(transactions) > 0:
+            total_income = sum(
+                float(t.get("amount", 0) or 0) for t in transactions
+                if t.get("transaction_type", "") in ("income", "receita")
+            )
+            total_expense = sum(
+                float(t.get("amount", 0) or 0) for t in transactions
+                if t.get("transaction_type", "") not in ("income", "receita")
+            )
+            data_dict["total_transactions"] = len(transactions)
+            data_dict["total_income"] = round(total_income, 2)
+            data_dict["total_expense"] = round(total_expense, 2)
+            data_dict["net_balance"] = round(total_income - total_expense, 2)
+            # Also recalculate total_amount as the gross total
+            data_dict["total_amount"] = round(total_income + total_expense, 2)
+
+        # Update the extracted data (with recalculated totals)
+        doc.extracted_data_json = json.dumps(data_dict, default=str)
+        from config import now_brazil
+        doc.processed_date = now_brazil()
         doc.department = department
         doc.category = category
 

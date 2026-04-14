@@ -565,12 +565,40 @@ class BalanceSheetCalculator:
 
         documents = self.db.query(Document).filter(*doc_filter).all()
 
+        from accounting.categories import resolve_category_name
+
+        # Categories that affect balance sheet accounts directly (not P&L):
+        # Loan payments reduce liabilities AND reduce cash — NOT an expense.
+        # Asset purchases increase fixed assets AND reduce cash — NOT an expense.
+        # Capital contributions increase cash AND increase equity — NOT revenue.
+        LOAN_PAYMENT_CATEGORIES = {
+            "loan_payment", "amortizacao", "amortizacao_divida",
+        }
+        ASSET_PURCHASE_CATEGORIES = {
+            "purchase_equipment", "purchase_vehicle", "purchase_property",
+            "purchase_software", "investments",
+        }
+        ASSET_SALE_CATEGORIES = {
+            "sale_equipment", "sale_vehicle", "sale_property",
+            "venda_imobilizado",
+        }
+        FINANCING_INFLOW_CATEGORIES = {
+            "loan_received", "capital_contribution", "capital_increase",
+        }
+        # Non-cash: depreciation/amortization are accounting entries, no cash moves
+        NON_CASH_CATEGORIES = {"depreciacao"}
+
         total_income = Decimal("0")
         total_expenses = Decimal("0")
+        total_loan_payments = Decimal("0")
+        total_asset_purchases = Decimal("0")
+        total_asset_sales = Decimal("0")
+        total_financing_inflows = Decimal("0")
 
-        def _process_transaction(issue_date_val, amount_val, txn_type):
-            """Process a single transaction, filtering by date and accumulating totals."""
-            nonlocal total_income, total_expenses
+        def _process_transaction(issue_date_val, amount_val, txn_type, category_val=None):
+            """Process a single transaction, classifying by category for balance sheet impact."""
+            nonlocal total_income, total_expenses, total_loan_payments
+            nonlocal total_asset_purchases, total_asset_sales, total_financing_inflows
 
             if issue_date_val is None:
                 return
@@ -586,6 +614,27 @@ class BalanceSheetCalculator:
                 return
 
             amount = Decimal(str(amount_val or 0))
+            resolved_cat = resolve_category_name(category_val or "")
+
+            # Skip non-cash items
+            if resolved_cat in NON_CASH_CATEGORIES:
+                return
+
+            # Balance sheet movements (not P&L)
+            if resolved_cat in LOAN_PAYMENT_CATEGORIES:
+                total_loan_payments += amount
+                return
+            if resolved_cat in ASSET_PURCHASE_CATEGORIES:
+                total_asset_purchases += amount
+                return
+            if resolved_cat in ASSET_SALE_CATEGORIES:
+                total_asset_sales += amount
+                return
+            if resolved_cat in FINANCING_INFLOW_CATEGORIES:
+                total_financing_inflows += amount
+                return
+
+            # P&L items
             if txn_type in ("income", "receita"):
                 total_income += amount
             else:
@@ -596,7 +645,6 @@ class BalanceSheetCalculator:
                 data_dict = json.loads(doc.extracted_data_json)
                 extracted = FinancialDocument(**data_dict)
 
-                # Check for inner transactions (multi-row documents like Excel ledgers)
                 inner_txns = data_dict.get("transactions")
                 if inner_txns and isinstance(inner_txns, list) and len(inner_txns) > 0:
                     for txn in inner_txns:
@@ -604,62 +652,88 @@ class BalanceSheetCalculator:
                             txn.get("date"),
                             txn.get("amount", 0),
                             txn.get("transaction_type") or extracted.transaction_type,
+                            txn.get("category"),
                         )
                 else:
                     _process_transaction(
                         extracted.issue_date,
                         extracted.total_amount,
                         extracted.transaction_type,
+                        extracted.category,
                     )
 
             except Exception as e:
                 logger.warning(f"Error processing document {doc.id} for balance sheet: {e}")
                 continue
 
-        # Build the balance sheet from accumulated data
-        net_result = total_income - total_expenses
+        # === Apply balance sheet impacts ===
 
-        if net_result > Decimal("0"):
-            bs.ativo_circulante += net_result
-            # Merge into existing cash line or create new
+        # 1. P&L → Equity (Lucros/Prejuízos Acumulados)
+        net_result = total_income - total_expenses
+        if net_result != Decimal("0"):
+            bs.patrimonio_liquido += net_result
+            existing_re = next((l for l in bs.equity_lines if l.code == "3.04.001"), None)
+            if existing_re:
+                existing_re.balance += net_result
+            else:
+                bs.equity_lines.append(BalanceSheetLine(
+                    code="3.04.001", name="Lucros/Prejuízos Acumulados",
+                    balance=net_result, level=2
+                ))
+
+        # 2. Loan payments: reduce Passivo (Empréstimos) + reduce Ativo (Caixa)
+        if total_loan_payments > 0:
+            # Reduce short-term loans first, then long-term
+            bs.passivo_circulante -= total_loan_payments
+            existing_loan = next((l for l in bs.liability_lines if l.code == "2.01.002"), None)
+            if existing_loan:
+                existing_loan.balance -= total_loan_payments
+            else:
+                existing_loan_lp = next((l for l in bs.liability_lines if l.code == "2.02.001"), None)
+                if existing_loan_lp:
+                    existing_loan_lp.balance -= total_loan_payments
+                    bs.passivo_circulante += total_loan_payments  # undo CP reduction
+                    bs.passivo_nao_circulante -= total_loan_payments
+            # Reduce cash
+            bs.ativo_circulante -= total_loan_payments
             existing_cash = next((l for l in bs.asset_lines if l.code == "1.01.001"), None)
             if existing_cash:
-                existing_cash.balance += net_result
+                existing_cash.balance -= total_loan_payments
+
+        # 3. Financing inflows: increase Passivo (Empréstimos) + increase Ativo (Caixa)
+        if total_financing_inflows > 0:
+            bs.passivo_circulante += total_financing_inflows
+            existing_loan = next((l for l in bs.liability_lines if l.code == "2.01.002"), None)
+            if existing_loan:
+                existing_loan.balance += total_financing_inflows
+            bs.ativo_circulante += total_financing_inflows
+            existing_cash = next((l for l in bs.asset_lines if l.code == "1.01.001"), None)
+            if existing_cash:
+                existing_cash.balance += total_financing_inflows
+
+        # 4. Asset purchases: increase Imobilizado + reduce Caixa
+        if total_asset_purchases > 0:
+            bs.imobilizado += total_asset_purchases
+            existing_imob = next((l for l in bs.asset_lines if l.code == "1.02.02.007"), None)
+            if existing_imob:
+                existing_imob.balance += total_asset_purchases
             else:
                 bs.asset_lines.append(BalanceSheetLine(
-                    code="1.01.001", name="Caixa e Equivalentes de Caixa",
-                    balance=net_result, level=2
+                    code="1.02.02.007", name="Outros Imobilizados",
+                    balance=total_asset_purchases, level=3
                 ))
-            # Merge into existing retained earnings or create new
-            bs.patrimonio_liquido += net_result
-            existing_re = next((l for l in bs.equity_lines if l.code == "3.04.001"), None)
-            if existing_re:
-                existing_re.balance += net_result
-            else:
-                bs.equity_lines.append(BalanceSheetLine(
-                    code="3.04.001", name="Lucros/Prejuízos Acumulados",
-                    balance=net_result, level=2
-                ))
-        elif net_result < Decimal("0"):
-            abs_deficit = abs(net_result)
-            bs.passivo_circulante += abs_deficit
-            existing_ob = next((l for l in bs.liability_lines if l.code == "2.01.005"), None)
-            if existing_ob:
-                existing_ob.balance += abs_deficit
-            else:
-                bs.liability_lines.append(BalanceSheetLine(
-                    code="2.01.005", name="Obrigações a Pagar",
-                    balance=abs_deficit, level=2
-                ))
-            bs.patrimonio_liquido += net_result
-            existing_re = next((l for l in bs.equity_lines if l.code == "3.04.001"), None)
-            if existing_re:
-                existing_re.balance += net_result
-            else:
-                bs.equity_lines.append(BalanceSheetLine(
-                    code="3.04.001", name="Lucros/Prejuízos Acumulados",
-                    balance=net_result, level=2
-                ))
+            bs.ativo_circulante -= total_asset_purchases
+            existing_cash = next((l for l in bs.asset_lines if l.code == "1.01.001"), None)
+            if existing_cash:
+                existing_cash.balance -= total_asset_purchases
+
+        # 5. Asset sales: reduce Imobilizado + increase Caixa
+        if total_asset_sales > 0:
+            bs.imobilizado -= total_asset_sales
+            bs.ativo_circulante += total_asset_sales
+            existing_cash = next((l for l in bs.asset_lines if l.code == "1.01.001"), None)
+            if existing_cash:
+                existing_cash.balance += total_asset_sales
 
     def _get_account_balances(self, reference_date: date) -> List[Dict]:
         """

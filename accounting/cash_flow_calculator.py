@@ -77,7 +77,9 @@ class CashFlowCalculator:
         from accounting.categories import DRE_CATEGORIES, DRELineType, resolve_category_name
 
         # Non-cash categories — excluded from cash flow entirely
-        NON_CASH_CATEGORIES = {"depreciacao", "amortizacao"}
+        # NOTE: only accounting depreciation is non-cash. "amortizacao de divida"
+        # (loan payments) IS cash — that's handled by category, not excluded here.
+        NON_CASH_CATEGORIES = {"depreciacao"}
 
         # Deduction categories — shown as negative entradas (reduce income), not saídas
         DEDUCTION_CATEGORIES = {"impostos_sobre_vendas", "devolucoes", "descontos_concedidos"}
