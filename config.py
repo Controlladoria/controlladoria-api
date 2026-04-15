@@ -101,13 +101,21 @@ class Settings(BaseSettings):
     # Encryption (MFA secrets, sensitive data)
     encryption_key: str = ""  # Optional: Separate Fernet key for data encryption (generates from jwt_secret_key if not provided)
 
-    # Stripe
+    # Payment (Asaas)
+    asaas_api_key: str = ""
+    asaas_webhook_token: str = ""  # Token for validating Asaas webhook requests
+    asaas_sandbox: bool = True  # True for dev/sandbox, False for production
+    asaas_trial_days: int = 15
+    asaas_success_url: str = "http://localhost:3000/dashboard"
+    asaas_cancel_url: str = "http://localhost:3000/pricing"
+
+    # Legacy Stripe (kept for backward compat during migration, will be removed)
     stripe_api_key: str = ""
     stripe_webhook_secret: str = ""
-    stripe_price_id: str = ""  # Legacy (treated as basic)
-    stripe_price_id_basic: str = ""  # Basic plan (R$ 99/month)
-    stripe_price_id_pro: str = ""  # Pro plan (R$ 249/month)
-    stripe_price_id_max: str = ""  # Max plan (R$ 399/month)
+    stripe_price_id: str = ""
+    stripe_price_id_basic: str = ""
+    stripe_price_id_pro: str = ""
+    stripe_price_id_max: str = ""
     stripe_trial_days: int = 15
     stripe_success_url: str = "http://localhost:3000/dashboard"
     stripe_cancel_url: str = "http://localhost:3000/pricing"

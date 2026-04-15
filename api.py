@@ -111,6 +111,7 @@ from routers import (
     admin_router,
     auth_router,
     billing_router,
+    legacy_router as billing_legacy_router,
     contact_router,
     documents_router,
     initial_balance_router,
@@ -435,6 +436,7 @@ app.include_router(organizations_router)
 app.include_router(org_settings_router)
 app.include_router(initial_balance_router)
 app.include_router(billing_router)
+app.include_router(billing_legacy_router)  # /stripe/* legacy endpoints → redirect to /billing/*
 logger.info("Team, Organizations, Org Settings, Initial Balance, and Billing routers mounted")
 
 # Admin & Contact

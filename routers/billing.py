@@ -1,12 +1,6 @@
 """
-Billing Router
-Handles Stripe subscription and billing endpoints:
-- Create checkout session
-- Manage customer portal
-- Get subscription status
-- Cancel subscription
-- Stripe webhooks
-- List available plans
+Billing Router — Asaas payment integration.
+Handles subscriptions, checkout, billing history, plan changes, and webhooks.
 """
 
 import logging
@@ -16,30 +10,37 @@ from sqlalchemy.orm import Session
 
 from auth.dependencies import get_current_active_user
 from config import settings
-from database import User, get_db
-from stripe_integration import StripeClient, StripeService, handle_webhook_event
+from database import Plan, User, get_db
+from payment.service import (
+    cancel_subscription,
+    change_plan,
+    create_checkout,
+    get_billing_history,
+    get_subscription_status,
+)
+from payment.webhooks import handle_webhook_event
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/stripe", tags=["Billing"])
+router = APIRouter(prefix="/billing", tags=["Billing"])
 
 
 @router.get("/plans")
 async def list_plans(db: Session = Depends(get_db)):
-    """
-    List all active plans for pricing page (public endpoint)
-
-    Returns plan details including features, pricing, and display information.
-    """
-    from plan_features import get_active_plans
-    plans = get_active_plans(db)
+    """List all active plans for pricing page (public endpoint)."""
+    plans = (
+        db.query(Plan)
+        .filter(Plan.is_active == True)
+        .order_by(Plan.sort_order)
+        .all()
+    )
     return [
         {
             "slug": p.slug,
             "display_name": p.display_name,
             "description": p.description,
             "max_users": p.max_users,
-            "price_monthly_brl": p.price_monthly_brl,
+            "price_monthly_brl": float(p.price_monthly_brl) if p.price_monthly_brl else None,
             "features": p.features or {},
             "is_highlighted": p.is_highlighted,
             "sort_order": p.sort_order,
@@ -48,120 +49,117 @@ async def list_plans(db: Session = Depends(get_db)):
     ]
 
 
-@router.post("/create-checkout-session")
+@router.post("/create-checkout")
 async def create_checkout_session(
-    plan: str = Query("basic", description="Plan slug (e.g., basic, pro, max)"),
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Create Stripe Checkout session for subscription
-
-    Starts the subscription flow with a 15-day free trial.
-    Returns checkout URL to redirect user to Stripe.
-
-    Args:
-        plan: Plan slug (e.g., "basic", "pro", "max")
-    """
-    # Validate plan slug exists in DB
-    from plan_features import get_plan_by_slug
-    plan_record = get_plan_by_slug(db, plan)
-    if not plan_record:
-        raise HTTPException(status_code=400, detail=f"Plano '{plan}' não encontrado.")
-
-    try:
-        result = StripeService.create_checkout_session(current_user, db, plan)
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Checkout session error: {e}")
-        raise HTTPException(status_code=500, detail="Falha ao criar sessão de checkout")
-
-
-@router.post("/create-portal-session")
-async def create_portal_session(
-    current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)
-):
-    """
-    Create Stripe Customer Portal session
-
-    Allows users to manage their subscription, payment methods, and invoices.
-    Returns portal URL to redirect user to Stripe.
-    """
-    try:
-        result = StripeService.create_portal_session(current_user, db)
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Portal session error: {e}")
-        raise HTTPException(status_code=500, detail="Falha ao criar sessão do portal")
-
-
-@router.get("/subscription-status")
-async def get_subscription_status(
-    current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)
-):
-    """
-    Get current user's subscription status
-
-    Returns subscription details including trial status, period end, plan info, and features.
-    """
-    try:
-        status = StripeService.get_subscription_status(current_user, db)
-        return status
-    except Exception as e:
-        logger.error(f"Subscription status error: {e}")
-        raise HTTPException(status_code=500, detail="Falha ao obter status da assinatura")
-
-
-@router.post("/cancel-subscription")
-async def cancel_subscription(
-    immediate: bool = False,
+    plan: str = Query("basic", description="Plan slug: basic, pro, max"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Cancel user's subscription
-
-    By default, cancels at period end. Set immediate=true to cancel immediately.
-    """
+    """Create a checkout session for a plan. Returns a payment URL."""
     try:
-        result = StripeService.cancel_subscription(current_user, db, immediate)
+        result = create_checkout(current_user, db, plan_slug=plan)
         return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Subscription cancellation error: {e}")
-        raise HTTPException(status_code=500, detail="Falha ao cancelar assinatura")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/subscription-status")
+async def subscription_status(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Get current subscription status."""
+    return get_subscription_status(current_user, db)
+
+
+@router.post("/cancel")
+async def cancel(
+    immediate: bool = Query(False, description="Cancel immediately vs at period end"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Cancel the current subscription."""
+    try:
+        return cancel_subscription(current_user, db, immediate=immediate)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/history")
+async def billing_history(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Get payment history for subscription management page."""
+    return get_billing_history(current_user, db)
+
+
+@router.post("/change-plan")
+async def change_subscription_plan(
+    plan: str = Query(..., description="New plan slug: basic, pro, max"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Upgrade or downgrade subscription plan."""
+    try:
+        return change_plan(current_user, db, new_plan_slug=plan)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/webhook")
-async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
-    """
-    Stripe webhook endpoint
+async def webhook(request: Request, db: Session = Depends(get_db)):
+    """Handle Asaas webhook events."""
+    # Verify webhook token
+    token = request.headers.get("asaas-access-token") or request.query_params.get("access_token")
+    if settings.asaas_webhook_token and token != settings.asaas_webhook_token:
+        raise HTTPException(status_code=401, detail="Invalid webhook token")
 
-    Handles Stripe events to keep subscription status synchronized.
-    Events: checkout.session.completed, customer.subscription.*, invoice.payment_*
-    """
     try:
-        payload = await request.body()
-        sig_header = request.headers.get("stripe-signature")
-
-        # Verify webhook signature
-        event = StripeClient.construct_webhook_event(
-            payload, sig_header, settings.stripe_webhook_secret
-        )
-
-        # Handle the event
-        handle_webhook_event(event, db)
-
-        return {"status": "success"}
-
-    except ValueError as e:
-        logger.error(f"Invalid webhook payload: {e}")
-        raise HTTPException(status_code=400, detail="Payload inválido")
+        payload = await request.json()
+        result = handle_webhook_event(payload, db)
+        return result
     except Exception as e:
         logger.error(f"Webhook processing error: {e}")
-        raise HTTPException(status_code=400, detail="Erro no webhook")
+        raise HTTPException(status_code=500, detail="Webhook processing failed")
+
+
+# ── Legacy Stripe endpoints (redirect to new paths) ──────────
+
+legacy_router = APIRouter(prefix="/stripe", tags=["Billing (Legacy)"])
+
+
+@legacy_router.get("/plans")
+async def legacy_plans(db: Session = Depends(get_db)):
+    return await list_plans(db)
+
+
+@legacy_router.post("/create-checkout-session")
+async def legacy_checkout(
+    plan: str = Query("basic"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    return await create_checkout_session(plan, current_user, db)
+
+
+@legacy_router.get("/subscription-status")
+async def legacy_status(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    return await subscription_status(current_user, db)
+
+
+@legacy_router.post("/cancel-subscription")
+async def legacy_cancel(
+    immediate: bool = Query(False),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    return await cancel(immediate, current_user, db)
+
+
+@legacy_router.post("/webhook")
+async def legacy_webhook(request: Request, db: Session = Depends(get_db)):
+    return await webhook(request, db)

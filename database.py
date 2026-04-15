@@ -704,10 +704,9 @@ class Subscription(Base):
         Integer, ForeignKey("organizations.id"), nullable=True, index=True
     )  # Per-org billing (nullable for backward compat during migration)
 
-    # Stripe IDs
-    stripe_customer_id = Column(String(255), nullable=False, index=True)
-    stripe_subscription_id = Column(String(255), nullable=True, index=True)
-    stripe_price_id = Column(String(255), nullable=True)
+    # Payment provider IDs (Asaas)
+    payment_customer_id = Column(String(255), nullable=True, index=True)
+    payment_subscription_id = Column(String(255), nullable=True, index=True)
 
     # Subscription status
     status = Column(

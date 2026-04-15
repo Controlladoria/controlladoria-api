@@ -50,11 +50,12 @@ async def require_active_subscription(
     if not subscription:
         from plan_features import get_default_plan
         default_plan = get_default_plan(db)
-        trial_end = datetime.utcnow() + timedelta(days=settings.stripe_trial_days)
+        from config import now_brazil
+        trial_end = now_brazil() + timedelta(days=settings.asaas_trial_days)
         subscription = Subscription(
             user_id=user.id,
-            organization_id=org_id,  # Link to org if available
-            stripe_customer_id=f"trial_{user.id}",  # Placeholder until Stripe checkout
+            organization_id=org_id,
+            payment_customer_id=f"trial_{user.id}",  # Placeholder until payment checkout
             status=SubscriptionStatus.TRIALING,
             trial_end=trial_end,
             plan_id=default_plan.id if default_plan else None,

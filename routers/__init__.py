@@ -7,6 +7,7 @@ from .account import router as account_router
 from .admin import router as admin_router
 from .auth import router as auth_router
 from .billing import router as billing_router
+from .billing import legacy_router
 from .contact import router as contact_router
 from .documents import router as documents_router
 from .initial_balance import router as initial_balance_router
@@ -21,6 +22,7 @@ __all__ = [
     "admin_router",
     "auth_router",
     "billing_router",
+    "legacy_router",
     "contact_router",
     "documents_router",
     "initial_balance_router",
