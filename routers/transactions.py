@@ -44,6 +44,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Transactions & Reports"])
 
 
+def _get_active_org_info(current_user: User, db) -> tuple:
+    """Get active organization's company_name and cnpj.
+    Falls back to user profile if no active org."""
+    org_id = (
+        getattr(current_user, '_active_org_id', None)
+        or getattr(current_user, 'active_org_id', None)
+    )
+    if org_id:
+        org = db.query(Organization).filter(Organization.id == org_id).first()
+        if org:
+            return org.company_name or current_user.company_name, org.cnpj or current_user.cnpj
+    return current_user.company_name, current_user.cnpj
+
+
 def _extract_transactions_from_documents(documents) -> list:
     """
     Extract transactions from documents, expanding multi-row ledgers.
@@ -893,8 +907,8 @@ async def get_dre_report(
         period_type=period_enum,
         start_date=period_start,
         end_date=period_end,
-        company_name=current_user.company_name,
-        cnpj=current_user.cnpj,
+        company_name=_get_active_org_info(current_user, db)[0],
+        cnpj=_get_active_org_info(current_user, db)[1],
     )
 
     return dre
@@ -967,8 +981,8 @@ async def export_dre_to_pdf_endpoint(
         period_type=period_enum,
         start_date=period_start,
         end_date=period_end,
-        company_name=current_user.company_name,
-        cnpj=current_user.cnpj,
+        company_name=_get_active_org_info(current_user, db)[0],
+        cnpj=_get_active_org_info(current_user, db)[1],
     )
 
     # Calculate previous period DRE for comparison
@@ -1085,8 +1099,8 @@ async def export_dre_to_excel_endpoint(
         period_type=period_enum,
         start_date=period_start,
         end_date=period_end,
-        company_name=current_user.company_name,
-        cnpj=current_user.cnpj,
+        company_name=_get_active_org_info(current_user, db)[0],
+        cnpj=_get_active_org_info(current_user, db)[1],
     )
 
     # Calculate previous period DRE for comparison
@@ -1200,8 +1214,8 @@ async def export_dre_to_csv_endpoint(
         period_type=period_enum,
         start_date=period_start,
         end_date=period_end,
-        company_name=current_user.company_name,
-        cnpj=current_user.cnpj,
+        company_name=_get_active_org_info(current_user, db)[0],
+        cnpj=_get_active_org_info(current_user, db)[1],
     )
 
     # Export to CSV
@@ -1261,8 +1275,8 @@ async def get_balance_sheet(
     calculator = BalanceSheetCalculator(db, current_user.id, org_id=getattr(current_user, '_active_org_id', None) or current_user.active_org_id)
     balance_sheet = calculator.calculate_balance_sheet(
         reference_date=ref_date,
-        company_name=current_user.company_name,
-        cnpj=current_user.cnpj,
+        company_name=_get_active_org_info(current_user, db)[0],
+        cnpj=_get_active_org_info(current_user, db)[1],
     )
 
     # Return as dict
@@ -1308,8 +1322,8 @@ async def export_balance_sheet_pdf(
     calculator = BalanceSheetCalculator(db, current_user.id, org_id=getattr(current_user, '_active_org_id', None) or current_user.active_org_id)
     balance_sheet = calculator.calculate_balance_sheet(
         reference_date=ref_date,
-        company_name=current_user.company_name,
-        cnpj=current_user.cnpj,
+        company_name=_get_active_org_info(current_user, db)[0],
+        cnpj=_get_active_org_info(current_user, db)[1],
     )
 
     # Export to PDF
@@ -1365,8 +1379,8 @@ async def export_balance_sheet_excel(
     calculator = BalanceSheetCalculator(db, current_user.id, org_id=getattr(current_user, '_active_org_id', None) or current_user.active_org_id)
     balance_sheet = calculator.calculate_balance_sheet(
         reference_date=ref_date,
-        company_name=current_user.company_name,
-        cnpj=current_user.cnpj,
+        company_name=_get_active_org_info(current_user, db)[0],
+        cnpj=_get_active_org_info(current_user, db)[1],
     )
 
     # Export to Excel
@@ -1419,8 +1433,8 @@ async def export_balance_sheet_csv(
     calculator = BalanceSheetCalculator(db, current_user.id, org_id=getattr(current_user, '_active_org_id', None) or current_user.active_org_id)
     balance_sheet = calculator.calculate_balance_sheet(
         reference_date=ref_date,
-        company_name=current_user.company_name,
-        cnpj=current_user.cnpj,
+        company_name=_get_active_org_info(current_user, db)[0],
+        cnpj=_get_active_org_info(current_user, db)[1],
     )
 
     # Export to CSV
@@ -1507,8 +1521,8 @@ async def get_financial_indicators(
         period_type=period_enum,
         start_date=period_start,
         end_date=period_end,
-        company_name=current_user.company_name,
-        cnpj=current_user.cnpj,
+        company_name=_get_active_org_info(current_user, db)[0],
+        cnpj=_get_active_org_info(current_user, db)[1],
     )
     dre_data = dre.model_dump() if dre else {}
 
@@ -1757,8 +1771,8 @@ async def get_cash_flow(
         start_date=period_start,
         end_date=period_end,
         method=method,
-        company_name=current_user.company_name,
-        cnpj=current_user.cnpj,
+        company_name=_get_active_org_info(current_user, db)[0],
+        cnpj=_get_active_org_info(current_user, db)[1],
     )
 
     # Convert to JSON-serializable dict
@@ -1875,8 +1889,8 @@ async def get_cash_flow_detailed(
         transactions=transactions,
         start_date=period_start,
         end_date=period_end,
-        company_name=current_user.company_name,
-        cnpj=current_user.cnpj,
+        company_name=_get_active_org_info(current_user, db)[0],
+        cnpj=_get_active_org_info(current_user, db)[1],
         initial_bank_balances=initial_bank_balances if initial_bank_balances else None,
     )
 
@@ -1964,8 +1978,8 @@ async def export_cash_flow_pdf(
         start_date=period_start,
         end_date=period_end,
         method=method,
-        company_name=current_user.company_name,
-        cnpj=current_user.cnpj,
+        company_name=_get_active_org_info(current_user, db)[0],
+        cnpj=_get_active_org_info(current_user, db)[1],
     )
 
     # Export to PDF
@@ -2038,8 +2052,8 @@ async def export_cash_flow_excel(
         start_date=period_start,
         end_date=period_end,
         method=method,
-        company_name=current_user.company_name,
-        cnpj=current_user.cnpj,
+        company_name=_get_active_org_info(current_user, db)[0],
+        cnpj=_get_active_org_info(current_user, db)[1],
     )
 
     # Export to Excel
@@ -2112,8 +2126,8 @@ async def export_cash_flow_csv(
         start_date=period_start,
         end_date=period_end,
         method=method,
-        company_name=current_user.company_name,
-        cnpj=current_user.cnpj,
+        company_name=_get_active_org_info(current_user, db)[0],
+        cnpj=_get_active_org_info(current_user, db)[1],
     )
 
     # Export to CSV
