@@ -100,10 +100,14 @@ class CashFlowCalculator:
                 continue
 
             if is_income_type(txn_type):
+                # Income: positive amounts add to entradas, negative reduce entradas
                 total_entradas += amount
                 entradas_by_cat[raw_category] = entradas_by_cat.get(raw_category, Decimal("0")) + amount
             else:
-                total_saidas += amount
+                # Expenses: always add absolute value to total.
+                # Negative expense amounts (refunds/returns) still represent money movement.
+                # Line items preserve the original sign for display.
+                total_saidas += abs(amount)
                 saidas_by_cat[raw_category] = saidas_by_cat.get(raw_category, Decimal("0")) + amount
 
         # Build readable line items (top categories)
@@ -113,8 +117,8 @@ class CashFlowCalculator:
             if v != 0
         }
         saidas_items = {
-            self._format_category(k): -v
-            for k, v in sorted(saidas_by_cat.items(), key=lambda x: -x[1])
+            self._format_category(k): -v if v > 0 else v
+            for k, v in sorted(saidas_by_cat.items(), key=lambda x: -abs(x[1]))
             if v != 0
         }
 
@@ -261,7 +265,7 @@ class CashFlowCalculator:
             if is_income_type(txn.get("transaction_type", "")):
                 balance += amount
             else:
-                balance -= amount
+                balance -= abs(amount)  # Always subtract absolute value for expenses
 
         # Add initial balance from org questionnaire
         initial = self._get_initial_balance(reference_date)

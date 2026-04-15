@@ -223,18 +223,17 @@ class BalanceSheetCalculator:
 
         has_journal_data = any(a["balance"] != Decimal("0") for a in accounts)
 
-        if has_journal_data:
-            # Use journal entries (full double-entry bookkeeping)
-            self._populate_from_journal_entries(bs, accounts)
-        else:
-            # Fallback: derive balance sheet from document transactions
-            logger.info("No journal entries found, using document-based balance sheet")
-            self._populate_from_documents(bs, ref_date)
-
-        # Apply initial balances from questionnaire (if available)
+        # Apply initial balances FIRST (base position from questionnaire)
         initial = self._get_initial_balance(ref_date)
         if initial:
             self._apply_initial_balances(bs, initial)
+
+        # Then layer on transaction data
+        if has_journal_data:
+            self._populate_from_journal_entries(bs, accounts)
+        else:
+            logger.info("No journal entries found, using document-based balance sheet")
+            self._populate_from_documents(bs, ref_date)
 
         # Calculate totals and validate
         bs.calculate_totals()
