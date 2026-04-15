@@ -668,9 +668,12 @@ class BalanceSheetCalculator:
 
         # === Apply balance sheet impacts ===
 
-        # 1. P&L → Equity (Lucros/Prejuízos Acumulados)
+        # 1. P&L → Equity (Lucros/Prejuízos Acumulados) + Cash (Ativo Circulante)
+        # Income increases cash AND equity. Expenses decrease cash AND equity.
+        # (Depreciation already excluded from totals above — it's non-cash.)
         net_result = total_income - total_expenses
         if net_result != Decimal("0"):
+            # Equity: net profit/loss
             bs.patrimonio_liquido += net_result
             existing_re = next((l for l in bs.equity_lines if l.code == "3.04.001"), None)
             if existing_re:
@@ -678,6 +681,17 @@ class BalanceSheetCalculator:
             else:
                 bs.equity_lines.append(BalanceSheetLine(
                     code="3.04.001", name="Lucros/Prejuízos Acumulados",
+                    balance=net_result, level=2
+                ))
+
+            # Cash: net cash movement (same as net_result since depreciation already excluded)
+            bs.ativo_circulante += net_result
+            existing_cash = next((l for l in bs.asset_lines if l.code == "1.01.001"), None)
+            if existing_cash:
+                existing_cash.balance += net_result
+            else:
+                bs.asset_lines.append(BalanceSheetLine(
+                    code="1.01.001", name="Caixa e Equivalentes de Caixa",
                     balance=net_result, level=2
                 ))
 

@@ -7,7 +7,7 @@ No CPC 03 overhead — just real cash movement.
 
 import json
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import List, Optional, Dict
 from sqlalchemy.orm import Session
@@ -77,16 +77,13 @@ class CashFlowCalculator:
         from accounting.categories import DRE_CATEGORIES, DRELineType, resolve_category_name
 
         # Non-cash categories — excluded from cash flow entirely
-        # NOTE: only accounting depreciation is non-cash. "amortizacao de divida"
-        # (loan payments) IS cash — that's handled by category, not excluded here.
         NON_CASH_CATEGORIES = {"depreciacao"}
-
-        # Deduction categories — shown as negative entradas (reduce income), not saídas
-        DEDUCTION_CATEGORIES = {"impostos_sobre_vendas", "devolucoes", "descontos_concedidos"}
 
         transactions = self._get_transactions(start_date, end_date)
 
         # Split into entradas and saídas with category detail
+        # Cash flow = actual money movement. Entradas = money IN. Saídas = money OUT.
+        # Deductions (taxes, refunds) are money OUT — they go to Saídas, not negative Entradas.
         entradas_by_cat: Dict[str, Decimal] = {}
         saidas_by_cat: Dict[str, Decimal] = {}
         total_entradas = Decimal("0")
@@ -98,16 +95,11 @@ class CashFlowCalculator:
             resolved_category = resolve_category_name(raw_category)
             txn_type = txn.get("transaction_type", "")
 
-            # Skip non-cash items (depreciation, amortization don't affect cash)
+            # Skip non-cash items (depreciation doesn't move cash)
             if resolved_category in NON_CASH_CATEGORIES:
                 continue
 
-            # Deductions (devoluções, impostos sobre vendas, descontos concedidos)
-            # are negative entradas — they reduce income, not increase expenses
-            if resolved_category in DEDUCTION_CATEGORIES:
-                total_entradas -= amount  # subtract from entradas
-                entradas_by_cat[raw_category] = entradas_by_cat.get(raw_category, Decimal("0")) - amount
-            elif is_income_type(txn_type):
+            if is_income_type(txn_type):
                 total_entradas += amount
                 entradas_by_cat[raw_category] = entradas_by_cat.get(raw_category, Decimal("0")) + amount
             else:
@@ -248,14 +240,23 @@ class CashFlowCalculator:
 
     def _get_cash_balance(self, reference_date: date) -> Decimal:
         """
-        Cash balance at a date = Initial Balance + cumulative (Income - Expenses).
+        Cash balance BEFORE a date = Initial Balance + cumulative (Income - Expenses)
+        for all transactions strictly before the reference_date.
         """
         from accounting import is_income_type
+        from accounting.categories import resolve_category_name
 
-        transactions = self._get_transactions(date(2000, 1, 1), reference_date)
+        # Get transactions BEFORE the reference date (exclusive)
+        day_before = reference_date - timedelta(days=1)
+        transactions = self._get_transactions(date(2000, 1, 1), day_before)
+
+        NON_CASH = {"depreciacao"}
 
         balance = Decimal("0")
         for txn in transactions:
+            resolved = resolve_category_name(txn.get("category", "") or "")
+            if resolved in NON_CASH:
+                continue
             amount = Decimal(str(txn.get("amount", 0) or 0))
             if is_income_type(txn.get("transaction_type", "")):
                 balance += amount
