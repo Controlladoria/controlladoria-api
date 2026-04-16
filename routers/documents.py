@@ -2959,15 +2959,15 @@ async def confirm_document_validation(
                 from sqlalchemy import case
                 totals = db.query(
                     func.count(DocumentValidationRow.id).label("count"),
-                    func.sum(func.abs(DocumentValidationRow.amount)).label("total_sum"),
+                    func.sum(DocumentValidationRow.amount).label("total_sum"),
                     func.sum(case(
                         (DocumentValidationRow.transaction_type == "receita",
-                         func.abs(DocumentValidationRow.amount)),
+                         DocumentValidationRow.amount),
                         else_=0
                     )).label("income_sum"),
                     func.sum(case(
                         (DocumentValidationRow.transaction_type != "receita",
-                         func.abs(DocumentValidationRow.amount)),
+                         DocumentValidationRow.amount),
                         else_=0
                     )).label("expense_sum"),
                 ).filter(
