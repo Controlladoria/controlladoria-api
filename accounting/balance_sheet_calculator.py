@@ -763,11 +763,15 @@ class BalanceSheetCalculator:
         # 6. Depreciation: increase accumulated depreciation (reduces Imobilizado net value)
         if total_depreciation > 0:
             bs.imobilizado -= total_depreciation
-            existing_depr = next((l for l in bs.asset_lines if l.code == "1.02.02.099"), None)
+            # Check both asset_lines and imobilizado_lines (initial balance puts it in imobilizado_lines)
+            existing_depr = (
+                next((l for l in bs.imobilizado_lines if l.code == "1.02.02.099"), None) or
+                next((l for l in bs.asset_lines if l.code == "1.02.02.099"), None)
+            )
             if existing_depr:
                 existing_depr.balance -= total_depreciation  # More negative
             else:
-                bs.asset_lines.append(BalanceSheetLine(
+                bs.imobilizado_lines.append(BalanceSheetLine(
                     code="1.02.02.099", name="(-) Depreciação Acumulada",
                     balance=-total_depreciation, level=3
                 ))
