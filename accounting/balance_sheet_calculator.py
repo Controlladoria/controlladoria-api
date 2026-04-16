@@ -589,8 +589,10 @@ class BalanceSheetCalculator:
         FINANCING_INFLOW_CATEGORIES = {
             "loan_received", "capital_contribution", "capital_increase",
         }
-        # Non-cash: depreciation/amortization are accounting entries, no cash moves
-        NON_CASH_CATEGORIES = {"depreciacao"}
+        # Depreciation reduces Imobilizado (non-cash — doesn't affect Caixa)
+        DEPRECIATION_CATEGORIES = {"depreciacao"}
+        # Deduction categories — reduce income, are cash outflows
+        DEDUCTION_CATEGORIES = {"impostos_sobre_vendas", "devolucoes", "descontos_concedidos"}
 
         total_income = Decimal("0")
         total_expenses = Decimal("0")
@@ -598,11 +600,13 @@ class BalanceSheetCalculator:
         total_asset_purchases = Decimal("0")
         total_asset_sales = Decimal("0")
         total_financing_inflows = Decimal("0")
+        total_depreciation = Decimal("0")
 
         def _process_transaction(issue_date_val, amount_val, txn_type, category_val=None):
             """Process a single transaction, classifying by category for balance sheet impact."""
             nonlocal total_income, total_expenses, total_loan_payments
             nonlocal total_asset_purchases, total_asset_sales, total_financing_inflows
+            nonlocal total_depreciation
 
             if issue_date_val is None:
                 return
@@ -620,8 +624,10 @@ class BalanceSheetCalculator:
             amount = Decimal(str(amount_val or 0))
             resolved_cat = resolve_category_name(category_val or "")
 
-            # Skip non-cash items
-            if resolved_cat in NON_CASH_CATEGORIES:
+            # Depreciation: reduces Imobilizado, goes to P&L (expense), but NOT cash
+            if resolved_cat in DEPRECIATION_CATEGORIES:
+                total_depreciation += abs(amount)
+                total_expenses += abs(amount)  # Still an expense in P&L
                 return
 
             # Balance sheet movements (not P&L)
@@ -672,12 +678,13 @@ class BalanceSheetCalculator:
 
         # === Apply balance sheet impacts ===
 
-        # 1. P&L → Equity (Lucros/Prejuízos Acumulados) + Cash (Ativo Circulante)
-        # Income increases cash AND equity. Expenses decrease cash AND equity.
-        # (Depreciation already excluded from totals above — it's non-cash.)
-        net_result = total_income - total_expenses
+        # 1. P&L → Equity + Cash
+        # net_result = income - ALL expenses (including depreciation) → goes to PL
+        # net_cash = income - CASH expenses (excluding depreciation) → goes to Caixa
+        net_result = total_income - total_expenses  # includes depreciation
+        net_cash = total_income - (total_expenses - total_depreciation)  # excludes depreciation
+
         if net_result != Decimal("0"):
-            # Equity: net profit/loss
             bs.patrimonio_liquido += net_result
             existing_re = next((l for l in bs.equity_lines if l.code == "3.04.001"), None)
             if existing_re:
@@ -688,8 +695,8 @@ class BalanceSheetCalculator:
                     balance=net_result, level=2
                 ))
 
-            # Cash: net cash movement (same as net_result since depreciation already excluded)
-            bs.ativo_circulante += net_result
+        if net_cash != Decimal("0"):
+            bs.ativo_circulante += net_cash
             existing_cash = next((l for l in bs.asset_lines if l.code == "1.01.001"), None)
             if existing_cash:
                 existing_cash.balance += net_result
@@ -752,6 +759,18 @@ class BalanceSheetCalculator:
             existing_cash = next((l for l in bs.asset_lines if l.code == "1.01.001"), None)
             if existing_cash:
                 existing_cash.balance += total_asset_sales
+
+        # 6. Depreciation: increase accumulated depreciation (reduces Imobilizado net value)
+        if total_depreciation > 0:
+            bs.imobilizado -= total_depreciation
+            existing_depr = next((l for l in bs.asset_lines if l.code == "1.02.02.099"), None)
+            if existing_depr:
+                existing_depr.balance -= total_depreciation  # More negative
+            else:
+                bs.asset_lines.append(BalanceSheetLine(
+                    code="1.02.02.099", name="(-) Depreciação Acumulada",
+                    balance=-total_depreciation, level=3
+                ))
 
     def _get_account_balances(self, reference_date: date) -> List[Dict]:
         """

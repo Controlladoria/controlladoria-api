@@ -73,6 +73,7 @@ class CompanyInfoUpdate(BaseModel):
     company_phone: Optional[str] = None
     company_email: Optional[str] = None
     regime_tributario: Optional[str] = None
+    capital_social: Optional[float] = None
 
 
 class BankAccountCreate(BaseModel):
