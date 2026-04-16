@@ -743,6 +743,22 @@ DRE_CATEGORIES: Dict[str, dict] = {
         "order": 8.02,
     },
 
+    # Amortização de Dívida (loan payment — balance sheet movement, NOT P&L)
+    # This is separate from accounting amortização (intangible asset write-off).
+    # Loan payments reduce Passivo + Caixa but do NOT appear in the DRE.
+    "amortizacao_divida": {
+        "account_code": "9.1.01",
+        "dre_line": "amortizacao_divida",
+        "line_type": DRELineType.OTHER_EXPENSE,  # Won't appear in DRE since balance sheet intercepts it
+        "dre_group": "Não Operacional",
+        "nature": "Despesa",
+        "cost_behavior": None,
+        "section": "9. Não Operacional",
+        "display_name": "Amortização de Dívida",
+        "sign": -1,
+        "order": 9.50,
+    },
+
     # ========================================================================
     # GENERIC / UNCATEGORIZED (catch-all)
     # ========================================================================

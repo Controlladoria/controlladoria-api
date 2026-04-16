@@ -286,37 +286,27 @@ class DailyCashFlowCalculator:
             day_key = current_date.isoformat()
 
             if day_key in daily_txns:
+                from accounting import is_income_type
+                NON_CASH = {"depreciacao"}
+
                 for txn in daily_txns[day_key]:
                     amount = Decimal(str(txn.get("amount", 0)))
                     category = txn.get("category", "")
                     txn_type = txn.get("transaction_type", "expense")
 
-                    bucket = _classify_transaction(category)
+                    resolved = resolve_category_name(category)
 
-                    if bucket == "receita_bruta":
+                    # Skip non-cash items
+                    if resolved in NON_CASH:
+                        continue
+
+                    if is_income_type(txn_type):
+                        # Income goes to receita_bruta
                         entry.receita_bruta += amount
-                    elif bucket == "deducao":
-                        entry.total_deducoes += amount
-                    elif bucket == "custo_variavel":
-                        entry.total_custos_variaveis += amount
-                    elif bucket == "custo_fixo_admin":
-                        entry.custos_fixos_administrativos += amount
-                    elif bucket == "custo_fixo_comercial":
-                        entry.custos_fixos_comerciais += amount
-                    elif bucket == "custo_fixo_producao":
-                        entry.custos_fixos_producao += amount
-                    elif bucket == "outra_despesa_fixa":
-                        entry.outras_despesas_fixas += amount
-                    elif bucket == "receita_nao_operacional":
-                        entry.receitas_nao_operacionais += amount
-                    elif bucket == "despesa_nao_operacional":
-                        entry.despesas_nao_operacionais += amount
                     else:
-                        # Unclassified: use transaction_type to decide
-                        if txn_type in ("income", "receita"):
-                            entry.receita_bruta += amount
-                        else:
-                            entry.outras_despesas_fixas += amount
+                        # All expenses: use abs() and put in outras_despesas_fixas
+                        # (the UI sums all expense buckets for "Saídas" anyway)
+                        entry.outras_despesas_fixas += abs(amount)
 
             entry.calculate()
             accumulated += entry.resultado_liquido
