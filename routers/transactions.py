@@ -1526,9 +1526,11 @@ async def get_financial_indicators(
     )
     dre_data = dre.model_dump() if dre else {}
 
-    # Get Balance Sheet data
+    # Get Balance Sheet data — use period END date, not reference date.
+    # For year 2025, ref_date=2025-01-01 but balance sheet should be as of Dec 2025.
+    bs_date = period_end
     calculator = BalanceSheetCalculator(db, current_user.id, org_id=org_id)
-    bs = calculator.calculate_balance_sheet(reference_date=ref_date)
+    bs = calculator.calculate_balance_sheet(reference_date=bs_date)
 
     def safe_div(a, b):
         """Safe division returning None for zero denominators"""
@@ -1570,32 +1572,32 @@ async def get_financial_indicators(
             "items": [
                 {
                     "name": "Margem Bruta",
-                    "formula": "Receita Líquida / Receita Bruta",
-                    "value": safe_pct(receita_liquida, receita_bruta),
+                    "formula": "Lucro Bruto / Receita Líquida",
+                    "value": safe_pct(margem_contribuicao, receita_liquida),
                     "suffix": "%",
                 },
                 {
                     "name": "Margem de Contribuição",
-                    "formula": "Margem Contribuição / Receita Bruta",
-                    "value": safe_pct(margem_contribuicao, receita_bruta),
+                    "formula": "Margem Contribuição / Receita Líquida",
+                    "value": safe_pct(margem_contribuicao, receita_liquida),
                     "suffix": "%",
                 },
                 {
                     "name": "Margem EBITDA",
-                    "formula": "EBITDA / Receita Bruta",
-                    "value": safe_pct(ebitda, receita_bruta),
+                    "formula": "EBITDA / Receita Líquida",
+                    "value": safe_pct(ebitda, receita_liquida),
                     "suffix": "%",
                 },
                 {
                     "name": "Margem Operacional",
-                    "formula": "Resultado Operacional / Receita Bruta",
-                    "value": safe_pct(resultado_operacional, receita_bruta),
+                    "formula": "EBIT / Receita Líquida",
+                    "value": safe_pct(resultado_operacional, receita_liquida),
                     "suffix": "%",
                 },
                 {
                     "name": "Margem Líquida",
-                    "formula": "Lucro Líquido / Receita Bruta",
-                    "value": safe_pct(lucro_liquido, receita_bruta),
+                    "formula": "Lucro Líquido / Receita Líquida",
+                    "value": safe_pct(lucro_liquido, receita_liquida),
                     "suffix": "%",
                 },
             ],
@@ -1687,7 +1689,7 @@ async def get_financial_indicators(
                 {
                     "name": "Ponto de Equilíbrio (R$)",
                     "formula": "Custos Fixos / (Margem Contribuição %)",
-                    "value": round(float(dre_data.get("total_custos_fixos", 0) or 0) / (margem_contribuicao / receita_bruta), 2) if receita_bruta and margem_contribuicao else None,
+                    "value": round(float(dre_data.get("total_custos_fixos", 0) or 0) / (margem_contribuicao / receita_liquida), 2) if receita_liquida and margem_contribuicao else None,
                     "suffix": "",
                     "is_currency": True,
                 },
