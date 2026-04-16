@@ -1,7 +1,7 @@
 """add retained_earnings to org_initial_balances
 
-Revision ID: a1b2c3d4e5f6
-Revises: f7a8b9c0d1e2
+Revision ID: f8a9b0c1d2e3
+Revises: e5f6a7b8c9d0
 Create Date: 2026-04-16
 
 """
@@ -11,9 +11,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-# revision identifiers, used by Alembic.
-revision: str = 'a1b2c3d4e5f6'
-down_revision: str = 'f7a8b9c0d1e2'
+revision: str = 'f8a9b0c1d2e3'
+down_revision: str = 'e5f6a7b8c9d0'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
