@@ -471,9 +471,14 @@ class BalanceSheetCalculator:
                 code="3.02.001", name="Reservas e Ajustes", balance=reserves, level=2
             ))
 
-        # Lucro ou prejuízo do exercício = plug number to balance the sheet
-        # Merge with existing retained earnings from document-based calculation
-        retained = equity_initial - capital_social - reserves
+        # Lucros/Prejuízos Acumulados — use explicit field if set, otherwise plug number
+        retained_from_field = Decimal(str(getattr(initial, 'retained_earnings', 0) or 0))
+        if retained_from_field != Decimal("0"):
+            retained = retained_from_field
+        else:
+            # Plug number to balance the sheet
+            retained = equity_initial - capital_social - reserves
+
         if retained != Decimal("0"):
             bs.patrimonio_liquido += retained
             existing_re = next((l for l in bs.equity_lines if l.code == "3.04.001"), None)

@@ -74,6 +74,7 @@ class InitialBalanceCreate(BaseModel):
 
     # Patrimônio Líquido (user inputs)
     reserves_and_adjustments: float = 0.0
+    retained_earnings: float = 0.0
 
     # Bank account balances
     bank_account_balances: Optional[List[BankAccountBalanceEntry]] = None
@@ -127,6 +128,7 @@ class InitialBalanceResponse(BaseModel):
 
     # Patrimônio Líquido
     reserves_and_adjustments: float
+    retained_earnings: float
 
     # Bank balances
     bank_account_balances: Optional[List[Dict[str, Any]]] = None
@@ -191,6 +193,7 @@ def _serialize_initial_balance(ib: OrgInitialBalance) -> dict:
         "provisions_long_term": float(ib.provisions_long_term or 0),
         "deferred_tax_liabilities": float(ib.deferred_tax_liabilities or 0),
         "reserves_and_adjustments": float(ib.reserves_and_adjustments or 0),
+        "retained_earnings": float(getattr(ib, 'retained_earnings', 0) or 0),
         "bank_account_balances": ib.bank_account_balances,
         "is_completed": ib.is_completed,
         "completed_at": ib.completed_at,
@@ -310,7 +313,7 @@ async def save_initial_balance(
             'labor_obligations', 'tax_obligations', 'other_current_liabilities',
             'long_term_loans', 'long_term_financing',
             'provisions_long_term', 'deferred_tax_liabilities',
-            'reserves_and_adjustments',
+            'reserves_and_adjustments', 'retained_earnings',
         ]:
             setattr(ib, field, Decimal(str(getattr(data, field))))
 
@@ -352,6 +355,7 @@ async def save_initial_balance(
             provisions_long_term=Decimal(str(data.provisions_long_term)),
             deferred_tax_liabilities=Decimal(str(data.deferred_tax_liabilities)),
             reserves_and_adjustments=Decimal(str(data.reserves_and_adjustments)),
+            retained_earnings=Decimal(str(data.retained_earnings)),
             bank_account_balances=bank_balances,
             is_completed=data.is_completed,
             completed_at=datetime.utcnow() if data.is_completed else None,
@@ -405,7 +409,7 @@ async def update_initial_balance(
         'labor_obligations', 'tax_obligations', 'other_current_liabilities',
         'long_term_loans', 'long_term_financing',
         'provisions_long_term', 'deferred_tax_liabilities',
-        'reserves_and_adjustments',
+        'reserves_and_adjustments', 'retained_earnings',
     ]:
         setattr(ib, field, Decimal(str(getattr(data, field))))
 

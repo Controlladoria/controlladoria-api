@@ -1277,6 +1277,7 @@ class OrgInitialBalance(Base):
 
     # === PATRIMÔNIO LÍQUIDO (Equity - user inputs) ===
     reserves_and_adjustments = Column(Numeric(15, 2), default=0, server_default="0")    # Reservas e Ajustes
+    retained_earnings = Column(Numeric(15, 2), default=0, server_default="0")           # Lucros/Prejuízos Acumulados
 
     # Bank account balances: [{bank_account_id: int, balance: float}, ...]
     bank_account_balances = Column(JSON, nullable=True)
