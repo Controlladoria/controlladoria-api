@@ -638,7 +638,7 @@ class BalanceSheetCalculator:
                 total_asset_purchases += amount
                 return
             if resolved_cat in ASSET_SALE_CATEGORIES:
-                total_asset_sales += amount
+                total_asset_sales += abs(amount)  # Sales always positive regardless of input sign
                 return
             if resolved_cat in FINANCING_INFLOW_CATEGORIES:
                 total_financing_inflows += amount
@@ -739,11 +739,11 @@ class BalanceSheetCalculator:
         # 4. Asset purchases: increase Imobilizado + reduce Caixa
         if total_asset_purchases > 0:
             bs.imobilizado += total_asset_purchases
-            existing_imob = next((l for l in bs.asset_lines if l.code == "1.02.02.007"), None)
+            existing_imob = next((l for l in bs.imobilizado_lines if l.code == "1.02.02.007"), None)
             if existing_imob:
                 existing_imob.balance += total_asset_purchases
             else:
-                bs.asset_lines.append(BalanceSheetLine(
+                bs.imobilizado_lines.append(BalanceSheetLine(
                     code="1.02.02.007", name="Outros Imobilizados",
                     balance=total_asset_purchases, level=3
                 ))
@@ -752,9 +752,14 @@ class BalanceSheetCalculator:
             if existing_cash:
                 existing_cash.balance -= total_asset_purchases
 
-        # 5. Asset sales: reduce Imobilizado + increase Caixa
+        # 5. Asset sales: reduce Imobilizado (from cost lines) + increase Caixa
         if total_asset_sales > 0:
             bs.imobilizado -= total_asset_sales
+            # Reduce from the largest imobilizado cost line (excluding depreciation)
+            cost_lines = [l for l in bs.imobilizado_lines if l.code != "1.02.02.099" and l.balance > 0]
+            if cost_lines:
+                cost_lines.sort(key=lambda l: l.balance, reverse=True)
+                cost_lines[0].balance -= total_asset_sales
             bs.ativo_circulante += total_asset_sales
             existing_cash = next((l for l in bs.asset_lines if l.code == "1.01.001"), None)
             if existing_cash:
