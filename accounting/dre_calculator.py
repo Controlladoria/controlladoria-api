@@ -259,14 +259,14 @@ class DRECalculator:
 
         for category in DEDUCTION_CATEGORIES:
             if category in aggregated:
-                amount = aggregated[category]["total"]
+                # Deductions always reduce revenue — use absolute value
+                amount = abs(aggregated[category]["total"])
 
                 if "devolucoes" in category:
                     devolucoes += amount
                 elif "descontos" in category:
                     descontos += amount
                 else:
-                    # Default deductions to impostos (impostos_sobre_vendas)
                     impostos += amount
 
         dre.devolucoes = devolucoes
@@ -289,16 +289,12 @@ class DRECalculator:
 
         for category in VARIABLE_COST_CATEGORIES:
             if category in aggregated:
-                amount = aggregated[category]["total"]
+                amount = abs(aggregated[category]["total"])
 
-                # CMV-related: cmv, materia_prima, insumos, comissoes_sobre_vendas
                 if category in ("cmv", "materia_prima", "insumos", "comissoes_sobre_vendas"):
                     cmv += amount
-                # CSP-related: csp
                 elif category == "csp":
                     csp += amount
-                # Other variable costs: salarios_producao, encargos_sociais_producao,
-                # energia_producao, manutencao_equipamentos_producao
                 else:
                     outros += amount
 
@@ -324,25 +320,21 @@ class DRECalculator:
         vendas = Decimal("0")
         outras = Decimal("0")
 
-        # Fixed admin expenses (salarios_administrativos, pro_labore, aluguel, etc.)
         for category in FIXED_EXPENSE_ADMIN_CATEGORIES:
             if category in aggregated:
-                amount = aggregated[category]["total"]
-                # Check if it's a generic/other category
+                amount = abs(aggregated[category]["total"])
                 if category in ("outras_despesas_operacionais", "nao_categorizado"):
                     outras += amount
                 else:
                     admin += amount
 
-        # Fixed commercial expenses (marketing, propaganda, fretes, etc.)
         for category in FIXED_EXPENSE_COMMERCIAL_CATEGORIES:
             if category in aggregated:
-                vendas += aggregated[category]["total"]
+                vendas += abs(aggregated[category]["total"])
 
-        # Other operating expenses from OTHER_EXPENSE_CATEGORIES
         for category in OTHER_EXPENSE_CATEGORIES:
             if category in aggregated:
-                outras += aggregated[category]["total"]
+                outras += abs(aggregated[category]["total"])
 
         dre.custos_fixos_producao = producao
         dre.despesas_administrativas = admin
@@ -364,7 +356,7 @@ class DRECalculator:
 
         for category in DEPRECIATION_CATEGORIES:
             if category in aggregated:
-                amount = aggregated[category]["total"]
+                amount = abs(aggregated[category]["total"])
 
                 if "depreciacao" in category:
                     deprec += amount
@@ -384,20 +376,17 @@ class DRECalculator:
         receitas = Decimal("0")
         despesas = Decimal("0")
 
-        # Financial revenues
         for category in FINANCIAL_REVENUE_CATEGORIES:
             if category in aggregated:
-                receitas += aggregated[category]["total"]
+                receitas += abs(aggregated[category]["total"])
 
-        # Non-operating revenues also go to financial result
         for category in NON_OPERATING_REVENUE_CATEGORIES:
             if category in aggregated:
-                receitas += aggregated[category]["total"]
+                receitas += abs(aggregated[category]["total"])
 
-        # Financial expenses
         for category in FINANCIAL_EXPENSE_CATEGORIES:
             if category in aggregated:
-                despesas += aggregated[category]["total"]
+                despesas += abs(aggregated[category]["total"])
 
         dre.receitas_financeiras = receitas
         dre.despesas_financeiras = despesas
@@ -416,15 +405,13 @@ class DRECalculator:
 
         for category in TAX_ON_PROFIT_CATEGORIES:
             if category in aggregated:
-                amount = aggregated[category]["total"]
+                amount = abs(aggregated[category]["total"])
 
                 if category == "irpj":
                     irpj += amount
                 elif category == "csll":
                     csll += amount
                 else:
-                    # Other tax categories (simples_nacional, iptu, taxas_municipais)
-                    # Default to IRPJ bucket for simplicity
                     irpj += amount
 
         dre.irpj = irpj
