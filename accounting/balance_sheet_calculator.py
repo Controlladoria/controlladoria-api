@@ -644,11 +644,12 @@ class BalanceSheetCalculator:
                 total_financing_inflows += amount
                 return
 
-            # P&L items
+            # P&L items — use abs() for expenses to match cash flow logic
+            # (negative expenses like devoluções still represent money that moved)
             if txn_type in ("income", "receita"):
                 total_income += amount
             else:
-                total_expenses += amount
+                total_expenses += abs(amount)
 
         for doc in documents:
             try:
