@@ -267,13 +267,12 @@ class CashFlowCalculator:
             else:
                 balance -= abs(amount)  # Always subtract absolute value for expenses
 
-        # Add initial balance from org questionnaire
+        # Add initial balance from org questionnaire.
+        # cash_and_equivalents already includes bank account balances
+        # (bank balances are pre-summed into this field during initial balance setup)
         initial = self._get_initial_balance(reference_date)
         if initial:
             balance += Decimal(str(initial.cash_and_equivalents or 0))
-            if initial.bank_account_balances:
-                for entry in initial.bank_account_balances:
-                    balance += Decimal(str(entry.get("balance", 0)))
 
         return balance
 

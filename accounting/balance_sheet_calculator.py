@@ -332,16 +332,23 @@ class BalanceSheetCalculator:
             ("1.01.005", "Despesas Antecipadas (Saldo Inicial)", initial.prepaid_expenses),
         ]
 
-        # Add bank account balances to cash
-        bank_total = Decimal("0")
+        # Bank account balances are already included in cash_and_equivalents.
+        # Add as informational sub-lines (level=3, NOT added to ativo_circulante)
         if initial.bank_account_balances:
+            from database import OrgBankAccount
             for entry in initial.bank_account_balances:
-                bank_total += Decimal(str(entry.get("balance", 0)))
-
-        if bank_total > Decimal("0"):
-            items_circulante.append(
-                ("1.01.006", "Saldos em Contas Bancárias (Saldo Inicial)", bank_total)
-            )
+                bal = Decimal(str(entry.get("balance", 0)))
+                if bal != Decimal("0"):
+                    bank_id = entry.get("bank_account_id")
+                    bank_name = "Conta Bancária"
+                    if bank_id and self.org_id:
+                        bank_acc = self.db.query(OrgBankAccount).filter(OrgBankAccount.id == bank_id).first()
+                        if bank_acc:
+                            bank_name = f"{bank_acc.bank_name} ({bank_acc.account_nickname or bank_acc.account_number})"
+                    bs.asset_lines.append(BalanceSheetLine(
+                        code=f"1.01.006.{bank_id or 0}", name=f"   ↳ {bank_name} (incluso acima)",
+                        balance=bal, level=3
+                    ))
 
         for code, name, amount in items_circulante:
             val = Decimal(str(amount or 0))
@@ -434,7 +441,6 @@ class BalanceSheetCalculator:
                 'fixed_assets_vehicles', 'fixed_assets_furniture', 'fixed_assets_computers',
                 'fixed_assets_other', 'intangible_assets',
             ])
-            + bank_total
             - Decimal(str(initial.accumulated_depreciation or 0))
             - Decimal(str(initial.accumulated_amortization or 0))
         )
