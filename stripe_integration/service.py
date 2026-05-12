@@ -4,7 +4,7 @@ Business logic for subscription management
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import HTTPException
@@ -173,9 +173,15 @@ class StripeService:
                 raise HTTPException(status_code=404, detail="Nenhuma assinatura encontrada")
 
             if not subscription.stripe_customer_id:
+                trial_end_dt = subscription.trial_end or (user.created_at + timedelta(days=15))
+                if trial_end_dt > datetime.utcnow():
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Você está no período de teste gratuito. Escolha um plano para acessar o portal de pagamento."
+                    )
                 raise HTTPException(
-                    status_code=400,
-                    detail="Você está no período de teste gratuito. Escolha um plano para acessar o portal de pagamento."
+                    status_code=402,
+                    detail="Seu período de teste expirou. Escolha um plano para continuar usando o ControlladorIA."
                 )
 
             portal_session = StripeClient.create_portal_session(

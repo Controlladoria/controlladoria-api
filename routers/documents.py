@@ -995,8 +995,12 @@ async def upload_document(
             except Exception:
                 pass  # Can't count rows — let it through, AI will handle it
 
-    # Validate MIME type if python-magic is available
-    if MAGIC_AVAILABLE:
+    # Validate MIME type if python-magic is available.
+    # OFX/OFC are SGML text files that may use Windows-1252 encoding — libmagic
+    # often returns application/octet-stream for them, so skip the check and
+    # rely on the already-validated extension instead.
+    _SKIP_MIME_EXTS = {".ofx", ".ofc"}
+    if MAGIC_AVAILABLE and file_ext not in _SKIP_MIME_EXTS:
         try:
             mime_type = magic.from_buffer(contents, mime=True)
 
@@ -1254,8 +1258,10 @@ async def bulk_upload_documents(
                 )
                 continue
 
-            # Validate MIME type if available
-            if MAGIC_AVAILABLE:
+            # Validate MIME type if available.
+            # Skip for OFX/OFC: libmagic misidentifies them as application/octet-stream
+            # when the file contains Windows-1252 encoded characters.
+            if MAGIC_AVAILABLE and file_ext not in {".ofx", ".ofc"}:
                 try:
                     mime_type = magic.from_buffer(contents, mime=True)
                     if mime_type not in settings.allowed_mime_types:
