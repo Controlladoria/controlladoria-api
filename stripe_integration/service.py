@@ -137,13 +137,22 @@ class StripeService:
                 subscription.max_users = plan.max_users
                 db.commit()
 
+            # Only offer a trial if the user hasn't already consumed one.
+            # Checking both the Stripe-synced trial_end on the subscription record
+            # and our internal user.trial_end_date prevents infinite free trials.
+            trial_already_used = bool(
+                subscription.trial_end
+                or (user.trial_end_date and user.trial_end_date <= datetime.utcnow())
+            )
+            trial_days = None if trial_already_used else settings.stripe_trial_days
+
             # Create checkout session
             checkout_session = StripeClient.create_checkout_session(
                 customer_id=subscription.stripe_customer_id,
                 price_id=price_id,
                 success_url=settings.stripe_success_url,
                 cancel_url=settings.stripe_cancel_url,
-                trial_days=settings.stripe_trial_days,
+                trial_days=trial_days,
             )
 
             return {
