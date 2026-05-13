@@ -5,7 +5,7 @@ Provides dependency injection for current user
 
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,7 @@ security = HTTPBearer(auto_error=False)
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db),
+    x_active_org_id: Optional[str] = Header(None, alias="X-Active-Org-Id"),
 ) -> User:
     """
     Get the current authenticated user from JWT token
@@ -78,10 +79,16 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Hydrate organization context: set role and active org from OrgMembership
-    org_id = payload.get("org_id")
-    if org_id is None and user.active_org_id:
-        org_id = user.active_org_id
+    # Resolve active org — priority: X-Active-Org-Id header > JWT org_id > DB active_org_id
+    # The header is sent by the frontend on every request and reflects what the user sees
+    # in the UI (the "active company" in the sidenav), making org switching instant without
+    # needing a new token.
+    try:
+        header_org_id = int(x_active_org_id) if x_active_org_id else None
+    except (ValueError, TypeError):
+        header_org_id = None
+
+    org_id = header_org_id or payload.get("org_id") or user.active_org_id
 
     if org_id:
         membership = db.query(OrgMembership).filter_by(
