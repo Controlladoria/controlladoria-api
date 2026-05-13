@@ -141,22 +141,45 @@ def document_org_filter(query, user: User, db: Session):
         return query.filter(Document.user_id.in_(accessible_ids))
 
 
+def get_user_org_ids(user: User, db: Session) -> list:
+    """
+    Get all organization IDs the user is an active member of.
+    Cached on the user object for the duration of the request.
+    """
+    cache_attr = '_user_org_ids_cache'
+    if hasattr(user, cache_attr):
+        return getattr(user, cache_attr)
+
+    from database import OrgMembership
+    memberships = db.query(OrgMembership.organization_id).filter_by(
+        user_id=user.id, is_active=True
+    ).all()
+    result = [m.organization_id for m in memberships]
+    setattr(user, cache_attr, result)
+    return result
+
+
 def verify_document_access(doc, user: User, db: Session) -> bool:
     """
     Check if a user has access to a specific document.
     Used for single-document lookups after fetching by ID.
+
+    A user can access a document if:
+    - The document belongs to any org the user is a member of (not just the active one)
+    - OR it's a legacy doc (no org_id) owned by an accessible user
     """
     if doc is None:
         return False
     org_id = get_active_org_id(user)
     if org_id:
-        # Document must belong to this org, OR be a legacy doc owned by an accessible user
-        if doc.organization_id == org_id:
-            return True
-        if doc.organization_id is None:
+        if doc.organization_id is not None:
+            # Allow access if the document belongs to any org the user is a member of
+            user_org_ids = get_user_org_ids(user, db)
+            return doc.organization_id in user_org_ids
+        else:
+            # Legacy doc with no org: check by user_id
             accessible_ids = get_accessible_user_ids(user, db)
             return doc.user_id in accessible_ids
-        return False
     else:
         # Legacy: check user_id
         accessible_ids = get_accessible_user_ids(user, db)

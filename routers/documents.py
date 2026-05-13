@@ -1104,12 +1104,17 @@ async def upload_document(
                 "⚠️  Using local filesystem - this breaks horizontal scaling!"
             )
 
-        # Check for duplicate files by content hash (exact same file)
-        duplicate = db.query(Document).filter(
+        # Get active org_id for document isolation
+        active_org = getattr(current_user, '_active_org_id', None) or getattr(current_user, 'active_org_id', None)
+
+        # Check for duplicate files by content hash within the same org (exact same file)
+        duplicate_query = db.query(Document).filter(
             Document.user_id == current_user.id,
             Document.file_hash == file_hash,
-            Document.status != DocumentStatus.FAILED  # Allow re-uploading failed files
-        ).first()
+            Document.status != DocumentStatus.FAILED,  # Allow re-uploading failed files
+            Document.organization_id == active_org,  # Scope to active org — same file can exist in different orgs
+        )
+        duplicate = duplicate_query.first()
 
         if duplicate:
             # Get client info if available for better error message
@@ -1137,8 +1142,6 @@ async def upload_document(
             )
 
         # Create database record with user association
-        # Get active org_id for document isolation
-        active_org = getattr(current_user, '_active_org_id', None) or getattr(current_user, 'active_org_id', None)
 
         doc = Document(
             file_name=safe_filename,
