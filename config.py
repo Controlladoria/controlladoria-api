@@ -108,6 +108,11 @@ class Settings(BaseSettings):
     stripe_price_id_basic: str = ""  # Basic plan (R$ 99/month)
     stripe_price_id_pro: str = ""  # Pro plan (R$ 249/month)
     stripe_price_id_max: str = ""  # Max plan (R$ 399/month)
+    # Free demo mode — bypasses ALL subscription checks when True.
+    # Set FREE_DEMO_MODE=true in env for temporary open-access demos.
+    # To re-enable paywalls: set FREE_DEMO_MODE=false (or remove the var).
+    free_demo_mode: bool = False
+
     stripe_trial_days: int = 15
     stripe_success_url: str = "http://localhost:3000/dashboard"
     stripe_cancel_url: str = "http://localhost:3000/pricing"

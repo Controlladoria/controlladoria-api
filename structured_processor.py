@@ -302,6 +302,37 @@ class StructuredDocumentProcessor:
 
         raise last_exception
 
+    def call_text_prompt(self, prompt: str, max_tokens: int = 4000, temperature: float = 0.1) -> str:
+        """Make a text-only AI call using the active provider. Returns raw text. Used by post-processing steps."""
+        if self.ai_provider == "openai":
+            response = self._active_client.chat.completions.create(
+                model=self.openai_model,
+                messages=[{"role": "user", "content": prompt}],
+                max_completion_tokens=max_tokens,
+                store=False,
+            )
+            return response.choices[0].message.content or ""
+        elif self.ai_provider == "gemini":
+            from google.genai import types as genai_types
+            response = self._active_client.models.generate_content(
+                model=self.gemini_model,
+                contents=prompt,
+                config=genai_types.GenerateContentConfig(
+                    max_output_tokens=max_tokens,
+                    temperature=temperature,
+                ),
+            )
+            return response.text or ""
+        elif self.ai_provider == "nova":
+            response = self._active_client.converse(
+                modelId=self.nova_model,
+                messages=[{"role": "user", "content": [{"text": prompt}]}],
+                inferenceConfig={"maxTokens": max_tokens, "temperature": temperature},
+            )
+            return response["output"]["message"]["content"][0]["text"] if response.get("output") else ""
+        else:
+            raise ValueError(f"Unsupported AI provider: {self.ai_provider}")
+
     # ------------------------------------------------------------------
     # Thread-safe client management + multi-key failover
     # ------------------------------------------------------------------
@@ -3386,10 +3417,29 @@ Use null for any column type you cannot identify."""
             transactions = []
             dates = []
 
+            _TRANSFER_KEYWORDS = (
+                "MESMA TITULARIDADE", "MESMA TIT", "TRANSF PROPRIA",
+                "TRANSFERENCIA PROPRIA", "TRANSF MESMA",
+            )
+
             for account in ofx.accounts if hasattr(ofx, 'accounts') else [ofx.account]:
                 for txn in account.statement.transactions:
                     amount = Decimal(str(txn.amount))
-                    transaction_type = "receita" if amount > 0 else "despesa"
+                    description = str(txn.memo or txn.payee or "")[:200]
+
+                    # Detect internal (same-owner) transfers via TRNTYPE=XFER or description keywords
+                    ofx_type = str(getattr(txn, 'type', '') or '').upper()
+                    is_internal_transfer = (
+                        ofx_type == "XFER"
+                        or any(kw in description.upper() for kw in _TRANSFER_KEYWORDS)
+                    )
+
+                    if is_internal_transfer:
+                        transaction_type = "transferencia"
+                        category = "transferencia_interna"
+                    else:
+                        transaction_type = "receita" if amount > 0 else "despesa"
+                        category = "nao_categorizado"
 
                     date_str = txn.date.strftime("%Y-%m-%d") if txn.date else None
                     if txn.date:
@@ -3397,8 +3447,8 @@ Use null for any column type you cannot identify."""
 
                     transactions.append(Transaction(
                         date=date_str,
-                        description=str(txn.memo or txn.payee or "")[:200],
-                        category="nao_categorizado",
+                        description=description,
+                        category=category,
                         amount=abs(amount),
                         transaction_type=transaction_type,
                     ))

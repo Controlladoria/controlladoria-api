@@ -31,6 +31,14 @@ async def require_active_subscription(
     Returns:
         Subscription object if valid
     """
+    # FREE DEMO MODE: bypass all checks — set FREE_DEMO_MODE=true in env (temporary)
+    if settings.free_demo_mode:
+        return Subscription(
+            user_id=user.id,
+            status=SubscriptionStatus.ACTIVE,
+            max_users=9999,
+        )
+
     subscription = None
 
     # Try org-based subscription first (multi-org support)
