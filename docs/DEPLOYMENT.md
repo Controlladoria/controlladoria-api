@@ -1,534 +1,455 @@
 # Deployment Guide
 
-Complete guide for deploying ControlladorIA to production.
-
-## Table of Contents
-- [Architecture Overview](#architecture-overview)
-- [Prerequisites](#prerequisites)
-- [Backend Deployment](#backend-deployment)
-- [Frontend Deployment](#frontend-deployment)
-- [Database Setup](#database-setup)
-- [Environment Variables](#environment-variables)
-- [Post-Deployment](#post-deployment)
-- [Monitoring & Maintenance](#monitoring--maintenance)
+Complete guide for deploying the full ControlladorIA platform to production.
 
 ---
 
-## Architecture Overview
-
-ControlladorIA consists of three main components:
+## Architecture
 
 ```
-┌─────────────┐      ┌─────────────┐      ┌──────────────┐
-│   Frontend  │ ───> │   Backend   │ ───> │  PostgreSQL  │
-│  (Next.js)  │      │  (FastAPI)  │      │   Database   │
-│   Vercel    │      │  Render.com │      │  Render.com  │
-└─────────────┘      └─────────────┘      └──────────────┘
-       │                    │
-       │                    ↓
-       │             ┌─────────────┐
-       │             │   Stripe    │
-       │             │   Webhooks  │
-       └────────────>└─────────────┘
-```
+                         ┌──────────────────────────┐
+                         │  controlladoria-website   │
+                         │  Next.js 16.2 (static)    │
+                         │  Vercel                   │
+                         │  controlladoria.com.br    │
+                         └──────────────────────────┘
 
-**Recommended Stack:**
-- **Frontend:** Vercel (Next.js optimized)
-- **Backend:** Render.com or Railway
-- **Database:** Render.com PostgreSQL or Neon
-- **Payments:** Stripe
-- **Email:** Resend
+┌──────────────────────┐  HTTPS  ┌─────────────────────────────┐
+│  controlladoria-ui   │ ──────> │     controlladoria-api      │
+│  Next.js 16.1        │         │     FastAPI / Python 3.12   │
+│  AWS Amplify         │         │     Railway                 │
+│  app.controlladoria  │         │     api.controlladoria.com  │
+└──────────────────────┘         └──────────────┬──────────────┘
+                                                │
+┌──────────────────────┐  HTTPS  ┌──────────────┘
+│  controlladoria-     │ ──────> │  ┌────────────────────┐
+│  sysadmin-ui         │         │  │  PostgreSQL 16      │
+│  Next.js 14.2        │         │  │  Railway           │
+│  AWS Amplify         │         │  └────────────────────┘
+│  admin.controlladoria│         │
+└──────────────────────┘         │  ┌────────────────────┐
+                                 │  │  Redis             │
+                                 │  │  (Cache/Celery)    │
+                                 │  └────────────────────┘
+                                 │
+                                 │  S3 ──────────────────────────────┐
+                                 │  (file storage)                   │
+                                 │                                   ▼
+                                 │  SQS ──> controlladoria-jobs <── EventBridge
+                                 │          AWS Lambda (us-east-2)   (schedules)
+                                 │
+                                 │  ┌────────────────────┐
+                                 └> │  Stripe (billing)  │
+                                    │  Resend (email)     │
+                                    │  Gemini / Nova / GPT│
+                                    └────────────────────┘
+
+┌──────────────────────┐
+│  controlladoria-app  │  ←── EAS Build (cloud)
+│  Expo SDK 54         │
+│  iOS + Android       │
+└──────────────────────┘
+```
 
 ---
 
 ## Prerequisites
 
-Before deploying, ensure you have:
+Accounts and access required:
 
-- [ ] GitHub account
-- [ ] Vercel account (free tier OK)
-- [ ] Render.com or Railway account
-- [ ] Stripe account (configured - see [STRIPE_SETUP.md](./STRIPE_SETUP.md))
-- [ ] Domain name (optional but recommended)
-- [ ] SSL certificate (automatic with Vercel/Render)
+| Service | Purpose | URL |
+|---------|---------|-----|
+| Railway | API + database hosting | railway.app |
+| AWS | S3, SQS, Lambda, ECR, SSM | aws.amazon.com |
+| GitHub | CI/CD via Actions | github.com |
+| AWS Amplify | Frontend hosting (UI + sysadmin) | console.aws.amazon.com/amplify |
+| Vercel | Marketing website | vercel.com |
+| Stripe | Billing | dashboard.stripe.com |
+| Resend | Transactional email | resend.com |
+| Google AI Studio | Gemini API keys | aistudio.google.com |
+| OpenAI | Fallback AI | platform.openai.com |
+| Expo (EAS) | Mobile builds | expo.dev |
+| Apple Developer | iOS distribution | developer.apple.com |
+| Google Play Console | Android distribution | play.google.com/console |
 
 ---
 
-## Backend Deployment
+## Deployment Order
 
-### Option 1: Render.com (Recommended)
+Follow this order — each step depends on the previous.
 
-#### Step 1: Prepare Repository
+```
+1. AWS infrastructure (S3, SQS, IAM, SSM)
+2. Railway PostgreSQL + API
+3. AWS Lambda jobs
+4. AWS Amplify — customer UI
+5. AWS Amplify — sysadmin UI
+6. Vercel — marketing website
+7. Stripe webhooks
+8. Mobile (EAS Build)
+```
 
-Ensure your repo has:
-- `requirements.txt` with all dependencies
-- `api.py` as main application file
-- `alembic/` directory with migrations
+---
 
-#### Step 2: Create Web Service
+## Step 1 — AWS Infrastructure
 
-1. Go to [render.com](https://render.com)
-2. Click **"New +"** → **"Web Service"**
-3. Connect your GitHub repository
-4. Configure:
-   - **Name:** `controlladoria-api`
-   - **Region:** Choose closest to users
-   - **Branch:** `main`
-   - **Root Directory:** (leave blank or set to root)
-   - **Runtime:** `Python 3`
-   - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `uvicorn api:app --host 0.0.0.0 --port $PORT`
-
-#### Step 3: Add Environment Variables
-
-Click **"Advanced"** → Add environment variables:
+### 1.1 S3 Bucket
 
 ```bash
-# AI Provider
-AI_PROVIDER=openai  # or anthropic
-OPENAI_API_KEY=sk-...
-# ANTHROPIC_API_KEY=sk-ant-...
+aws s3api create-bucket \
+  --bucket controlladoria-prod \
+  --region us-east-2 \
+  --create-bucket-configuration LocationConstraint=us-east-2
 
-# Database (will be set after creating PostgreSQL instance)
-DATABASE_URL=postgresql://...
+# Block public access
+aws s3api put-public-access-block \
+  --bucket controlladoria-prod \
+  --public-access-block-configuration \
+    BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+```
 
-# JWT
-JWT_SECRET_KEY=<generate-with-openssl-rand-hex-32>
-JWT_ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-REFRESH_TOKEN_EXPIRE_DAYS=7
+### 1.2 SQS Queue
 
-# Stripe (LIVE KEYS for production)
+```bash
+# Create queue with DLQ
+aws sqs create-queue \
+  --queue-name controlladoria-document-processing-prod-dlq \
+  --region us-east-2
+
+DLQ_ARN=$(aws sqs get-queue-attributes \
+  --queue-url <dlq-url> \
+  --attribute-names QueueArn \
+  --query Attributes.QueueArn --output text)
+
+aws sqs create-queue \
+  --queue-name controlladoria-document-processing-prod \
+  --region us-east-2 \
+  --attributes VisibilityTimeout=900,MessageRetentionPeriod=86400,RedrivePolicy="{\"deadLetterTargetArn\":\"$DLQ_ARN\",\"maxReceiveCount\":3}"
+```
+
+### 1.3 IAM Role for Lambda
+
+Create a role `controlladoria-lambda-prod` with trust policy for Lambda, and attach a custom policy with:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Effect": "Allow", "Action": ["s3:GetObject","s3:PutObject","s3:DeleteObject"], "Resource": "arn:aws:s3:::controlladoria-prod/*" },
+    { "Effect": "Allow", "Action": ["sqs:ReceiveMessage","sqs:DeleteMessage","sqs:GetQueueAttributes"], "Resource": "arn:aws:sqs:us-east-2:*:controlladoria-document-processing-prod" },
+    { "Effect": "Allow", "Action": ["ssm:GetParameter","ssm:GetParameters","ssm:GetParametersByPath"], "Resource": "arn:aws:ssm:us-east-2:*:parameter/controlladoria/prod/*" },
+    { "Effect": "Allow", "Action": ["bedrock:InvokeModel"], "Resource": "*" },
+    { "Effect": "Allow", "Action": ["ecr:GetDownloadUrlForLayer","ecr:BatchGetImage","ecr:GetAuthorizationToken"], "Resource": "*" },
+    { "Effect": "Allow", "Action": ["logs:CreateLogGroup","logs:CreateLogStream","logs:PutLogEvents"], "Resource": "*" }
+  ]
+}
+```
+
+### 1.4 SSM Parameter Store
+
+Populate all Lambda config. Use SecureString for sensitive values:
+
+```bash
+PREFIX="/controlladoria/prod/worker"
+
+aws ssm put-parameter --name "$PREFIX/ENVIRONMENT"      --value "production"     --type String
+aws ssm put-parameter --name "$PREFIX/DATABASE_URL"     --value "postgresql://..."  --type SecureString
+aws ssm put-parameter --name "$PREFIX/JWT_SECRET_KEY"   --value "$(openssl rand -hex 32)"  --type SecureString
+aws ssm put-parameter --name "$PREFIX/ENCRYPTION_KEY"   --value "<fernet-key>"   --type SecureString
+aws ssm put-parameter --name "$PREFIX/AI_PROVIDER"      --value "gemini"         --type String
+aws ssm put-parameter --name "$PREFIX/GEMINI_API_KEYS"  --value "key1,key2"      --type SecureString
+aws ssm put-parameter --name "$PREFIX/GEMINI_MODEL"     --value "gemini-flash-lite-latest" --type String
+aws ssm put-parameter --name "$PREFIX/NOVA_MODEL"       --value "us.amazon.nova-2-lite-v1:0" --type String
+aws ssm put-parameter --name "$PREFIX/NOVA_REGION"      --value "us-east-2"      --type String
+aws ssm put-parameter --name "$PREFIX/OPENAI_API_KEYS"  --value "sk-..."         --type SecureString
+aws ssm put-parameter --name "$PREFIX/OPENAI_MODEL"     --value "gpt-5.4-nano"   --type String
+aws ssm put-parameter --name "$PREFIX/AI_FAILOVER_ENABLED" --value "true"        --type String
+aws ssm put-parameter --name "$PREFIX/S3_BUCKET_NAME"   --value "controlladoria-prod" --type String
+aws ssm put-parameter --name "$PREFIX/USE_S3"           --value "true"           --type String
+aws ssm put-parameter --name "$PREFIX/SQS_DOCUMENT_QUEUE_URL" --value "https://sqs.us-east-2..." --type String
+aws ssm put-parameter --name "$PREFIX/STRIPE_API_KEY"   --value "sk_live_..."    --type SecureString
+aws ssm put-parameter --name "$PREFIX/RESEND_API_KEY"   --value "re_..."         --type SecureString
+aws ssm put-parameter --name "$PREFIX/FRONTEND_URL"     --value "https://app.controlladoria.com.br" --type String
+```
+
+---
+
+## Step 2 — Railway (API + PostgreSQL)
+
+### 2.1 Create Services
+
+1. New project on Railway
+2. Add **PostgreSQL** service — copy `DATABASE_URL` from connection tab
+3. Add **Web Service** → Deploy from GitHub → select `controlladoria-api` repo, branch `main`
+
+### 2.2 Configure Environment Variables
+
+Set all variables in Railway dashboard → Variables tab:
+
+```bash
+ENVIRONMENT=production
+DATABASE_URL=<railway-postgres-url>
+JWT_SECRET_KEY=<openssl rand -hex 32>
+ENCRYPTION_KEY=<fernet-key>
+
+AI_PROVIDER=gemini
+GEMINI_API_KEYS=key1,key2
+GEMINI_MODEL=gemini-flash-lite-latest
+NOVA_MODEL=us.amazon.nova-2-lite-v1:0
+NOVA_REGION=us-east-2
+OPENAI_API_KEYS=sk-...
+AI_FAILOVER_ENABLED=true
+
+AWS_ACCESS_KEY_ID=<key>
+AWS_SECRET_ACCESS_KEY=<secret>
+AWS_REGION=us-east-2
+S3_BUCKET_NAME=controlladoria-prod
+USE_S3=true
+SQS_DOCUMENT_QUEUE_URL=https://sqs.us-east-2...
+
 STRIPE_API_KEY=sk_live_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_PRICE_ID=price_...
+STRIPE_WEBHOOK_SECRET=whsec_...        # Set after step 7
+STRIPE_PRICE_ID_BASIC=price_...
+STRIPE_PRICE_ID_PRO=price_...
+STRIPE_PRICE_ID_MAX=price_...
 STRIPE_TRIAL_DAYS=15
-STRIPE_SUCCESS_URL=https://yourdomain.com/
-STRIPE_CANCEL_URL=https://yourdomain.com/pricing
+STRIPE_SUCCESS_URL=https://app.controlladoria.com.br/dashboard
+STRIPE_CANCEL_URL=https://app.controlladoria.com.br/pricing
 
-# Email (Resend)
 RESEND_API_KEY=re_...
-FROM_EMAIL=noreply@yourdomain.com
+FROM_EMAIL=ControlladorIA <noreply@controlladoria.com.br>
+ADMIN_EMAIL=admin@controlladoria.com.br
+SUPPORT_EMAIL=suporte@controlladoria.com.br
+FRONTEND_URL=https://app.controlladoria.com.br
 
-# Frontend URL
-FRONTEND_URL=https://yourdomain.com
+CORS_ORIGINS=https://app.controlladoria.com.br,https://admin.controlladoria.com.br,https://controlladoria.com.br
 
-# CORS
-CORS_ORIGINS=https://yourdomain.com
+REDIS_URL=<redis-url-if-using-celery>
+FREE_DEMO_MODE=false
 
-# Environment
-ENVIRONMENT=production
-
-# File Storage
-MAX_UPLOAD_SIZE=52428800  # 50MB
-
-# Rate Limiting
-RATE_LIMIT_ENABLED=true
-```
-
-#### Step 4: Deploy
-
-1. Click **"Create Web Service"**
-2. Render will:
-   - Clone your repo
-   - Install dependencies
-   - Start the server
-   - Provide a URL: `https://controlladoria-api.onrender.com`
-
-#### Step 5: Run Migrations
-
-After first deploy:
-```bash
-# Using Render Shell
-# Go to dashboard → Your service → Shell tab
-alembic upgrade head
-```
-
-### Option 2: Railway
-
-1. Go to [railway.app](https://railway.app)
-2. **New Project** → **Deploy from GitHub**
-3. Select repository
-4. Railway auto-detects Python
-5. Add environment variables (same as Render)
-6. Deploy
-7. Run migrations via Railway CLI:
-   ```bash
-   railway run alembic upgrade head
-   ```
-
----
-
-## Frontend Deployment
-
-### Vercel (Recommended for Next.js)
-
-#### Step 1: Prepare Repository
-
-Ensure `frontend/` directory has:
-- `package.json`
-- `next.config.ts`
-- `.env.local.example` (but NOT `.env.local` - don't commit secrets!)
-
-#### Step 2: Connect to Vercel
-
-1. Go to [vercel.com](https://vercel.com)
-2. Click **"Add New Project"**
-3. Import your GitHub repository
-4. Vercel will auto-detect Next.js
-
-#### Step 3: Configure Build Settings
-
-- **Framework Preset:** Next.js
-- **Root Directory:** `frontend`
-- **Build Command:** `npm run build` (auto-detected)
-- **Output Directory:** `.next` (auto-detected)
-- **Install Command:** `npm install` (auto-detected)
-
-#### Step 4: Environment Variables
-
-Add to Vercel project settings:
-
-```bash
-NEXT_PUBLIC_API_URL=https://controlladoria-api.onrender.com  # Your backend URL
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...  # Stripe LIVE publishable key
-```
-
-⚠️ **Important:** Only `NEXT_PUBLIC_` variables are exposed to browser. Keep secrets in backend!
-
-#### Step 5: Deploy
-
-1. Click **"Deploy"**
-2. Vercel will:
-   - Build Next.js app
-   - Deploy to CDN
-   - Provide URL: `https://controlladoria.vercel.app`
-
-#### Step 6: Custom Domain (Optional)
-
-1. In Vercel project settings → **"Domains"**
-2. Add your domain: `yourdomain.com`
-3. Follow DNS configuration instructions
-4. Vercel provides automatic SSL
-
----
-
-## Database Setup
-
-### Render PostgreSQL (Recommended)
-
-#### Step 1: Create Database
-
-1. In Render dashboard, click **"New +"** → **"PostgreSQL"**
-2. Configure:
-   - **Name:** `controlladoria-db`
-   - **Database:** `controlladoria`
-   - **User:** `controlladoria`
-   - **Region:** Same as backend
-   - **Plan:** Starter ($7/month minimum for production)
-
-#### Step 2: Get Connection String
-
-1. Click on created database
-2. Copy **"External Database URL"**
-3. Format: `postgresql://user:password@host:port/database`
-
-#### Step 3: Add to Backend
-
-1. Go to backend web service
-2. **Environment** → Edit `DATABASE_URL`
-3. Paste connection string
-4. Save
-5. Service will auto-redeploy
-
-#### Step 4: Run Migrations
-
-```bash
-# In Render Shell (backend service → Shell tab)
-alembic upgrade head
-```
-
-### Alternative: Neon (Serverless)
-
-1. Go to [neon.tech](https://neon.tech)
-2. Create project
-3. Copy connection string
-4. Add to backend environment variables
-5. Run migrations
-
-See [DATABASE_SETUP.md](./DATABASE_SETUP.md) for more options.
-
----
-
-## Environment Variables
-
-### Backend Environment Variables (Complete Reference)
-
-```bash
-# ===== AI Provider =====
-AI_PROVIDER=openai
-OPENAI_API_KEY=sk-proj-...
-# ANTHROPIC_API_KEY=sk-ant-...
-
-# ===== Database =====
-DATABASE_URL=postgresql://user:password@host:port/database
-
-# ===== Authentication =====
-JWT_SECRET_KEY=your-secret-key-generate-with-openssl-rand-hex-32
-JWT_ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-REFRESH_TOKEN_EXPIRE_DAYS=7
-
-# ===== Stripe =====
-STRIPE_API_KEY=sk_live_51...
-STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_PRICE_ID=price_...
-STRIPE_TRIAL_DAYS=15
-STRIPE_SUCCESS_URL=https://yourdomain.com/
-STRIPE_CANCEL_URL=https://yourdomain.com/pricing
-
-# ===== Email (Resend) =====
-RESEND_API_KEY=re_...
-FROM_EMAIL=noreply@yourdomain.com
-
-# ===== URLs =====
-FRONTEND_URL=https://yourdomain.com
-CORS_ORIGINS=https://yourdomain.com
-
-# ===== Application =====
-ENVIRONMENT=production
-API_TITLE=ControlladorIA API
-API_VERSION=1.0.0
-
-# ===== File Upload =====
-MAX_UPLOAD_SIZE=52428800  # 50MB in bytes
-
-# ===== Rate Limiting =====
-RATE_LIMIT_ENABLED=true
-UPLOAD_RATE_LIMIT=10/minute
-CONTACT_RATE_LIMIT=5/hour
-
-# ===== File Cleanup =====
-FILE_CLEANUP_ENABLED=true
-FILE_RETENTION_DAYS=365
-CLEANUP_ORPHANED_FILES=true
-CLEANUP_SCHEDULE_HOUR=2
-
-# ===== Logging =====
 LOG_LEVEL=INFO
+RATE_LIMIT_ENABLED=true
 ```
 
-### Frontend Environment Variables
+### 2.3 Add GitHub Secret
 
+```
+Repository Settings → Secrets → Actions
+RAILWAY_TOKEN_PROD = <token from Railway account settings>
+```
+
+### 2.4 Deploy
+
+The `railway.json` start command runs migrations automatically:
+```
+python create_database.py && alembic upgrade head && uvicorn api:app --host 0.0.0.0 --port $PORT
+```
+
+Trigger first deploy by pushing to `main` (dev) or dispatching `deploy-prod.yml`.
+
+### 2.5 Create First Sysadmin Account
+
+After the API is up, run once:
 ```bash
-NEXT_PUBLIC_API_URL=https://api.yourdomain.com
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_51...
+# Via Railway CLI
+railway run python create_sysadmin.py
+
+# Or SSH into the service and run directly
 ```
+
+### 2.6 Configure Custom Domain
+
+Railway dashboard → Settings → Domains → Add `api.controlladoria.com.br`
 
 ---
 
-## Post-Deployment
+## Step 3 — Lambda Jobs
 
-### 1. Configure Stripe Webhooks
+### 3.1 Add GitHub Secrets
 
-Update webhook URL to production:
-
-1. Stripe Dashboard → **Developers** → **Webhooks**
-2. Add endpoint: `https://controlladoria-api.onrender.com/stripe/webhook`
-3. Select events:
-   - checkout.session.completed
-   - customer.subscription.created
-   - customer.subscription.updated
-   - customer.subscription.deleted
-   - invoice.payment_succeeded
-   - invoice.payment_failed
-4. Copy webhook signing secret
-5. Update backend environment: `STRIPE_WEBHOOK_SECRET`
-
-### 2. Test Production Flow
-
-**Critical test paths:**
-
-1. **User Registration:**
-   - Go to https://yourdomain.com/register
-   - Create account
-   - Verify email in logs (Resend dashboard)
-
-2. **Subscription Flow:**
-   - Login
-   - Go to /pricing
-   - Start trial with real card (you can cancel immediately)
-   - Check Stripe dashboard for subscription
-   - Check database for subscription record
-
-3. **Document Upload:**
-   - Upload test PDF
-   - Verify processing
-   - Check file storage
-
-4. **Webhook Verification:**
-   - In Stripe, send test webhook
-   - Check backend logs for webhook received
-   - Verify database updated
-
-### 3. Health Check
-
-Test all endpoints:
-
-```bash
-# Health check
-curl https://controlladoria-api.onrender.com/health
-
-# Should return:
-# {"status":"healthy","timestamp":"...","checks":{...}}
+```
+AWS_ACCESS_KEY_ID         ← same IAM user as step 1
+AWS_SECRET_ACCESS_KEY
+LAMBDA_EXECUTION_ROLE_ARN ← ARN of role created in step 1.3
+PROD_SQS_DOCUMENT_PROCESSING_ARN ← ARN of SQS queue from step 1.2
 ```
 
-### 4. Setup Monitoring
+### 3.2 Deploy
 
-#### Render Monitoring
+Dispatch `deploy-prod.yml` in `controlladoria-jobs` repo (type "deploy" to confirm).
 
-- Automatic in Render dashboard
-- View logs, CPU, memory
-- Set up email alerts
-
-#### Sentry (Error Tracking)
-
-```bash
-# Install
-pip install sentry-sdk[fastapi]
-
-# In api.py (top of file)
-import sentry_sdk
-sentry_sdk.init(
-    dsn="https://...@sentry.io/...",
-    environment="production"
-)
-```
-
-Add to Vercel:
-```bash
-npm install @sentry/nextjs
-npx @sentry/wizard@latest -i nextjs
-```
+The workflow automatically:
+- Builds Docker image, pushes to ECR
+- Creates/updates 4 Lambda functions
+- Wires SQS trigger (batch 1, concurrency 50)
+- Creates EventBridge schedules for cleanup/retry jobs
+- Cleans up old ECR images (keeps 5)
 
 ---
 
-## Monitoring & Maintenance
+## Step 4 — AWS Amplify (Customer UI)
 
-### Daily Checks
-
-- [ ] Check error logs (Render dashboard)
-- [ ] Monitor Stripe dashboard for failed payments
-- [ ] Check database size (stay under plan limits)
-
-### Weekly Checks
-
-- [ ] Review Sentry errors (if configured)
-- [ ] Check failed payment retries
-- [ ] Monitor API response times
-
-### Monthly Checks
-
-- [ ] Review hosting costs
-- [ ] Check database backups
-- [ ] Test restore process
-- [ ] Update dependencies:
-  ```bash
-  pip list --outdated
-  npm outdated
-  ```
-
-### Backup Strategy
-
-**Automated (via Render):**
-- Daily automatic backups (included in Starter plan+)
-- Retention: 7 days (Starter), 30 days (Standard)
-
-**Manual Backups:**
-```bash
-# Download database backup
-# Render Dashboard → Database → Backups → Download
-
-# Or via pg_dump
-pg_dump $DATABASE_URL > backup_$(date +%Y%m%d).sql
-```
-
-**Backup Schedule:**
-- Daily: Automated (via Render)
-- Weekly: Manual download to local storage
-- Before migrations: Always backup first
-
-### Scaling Considerations
-
-**When to upgrade:**
-
-| Metric | Free/Starter Limit | Action |
-|--------|-------------------|--------|
-| Users | 100-500 | Upgrade to Standard plan |
-| Database | >1GB | Upgrade Render DB plan or migrate to AWS RDS |
-| API requests | >100/min sustained | Add load balancer, multiple instances |
-| Storage | >10GB files | Move to S3/CloudFlare R2 |
+1. Open Amplify Console → **New app** → **Host web app** → GitHub
+2. Select `controlladoria-ui` repo, branch `main`
+3. Framework: Next.js (auto-detected)
+4. Environment variables:
+   ```
+   NEXT_PUBLIC_API_URL=https://api.controlladoria.com.br
+   ```
+5. Deploy
+6. Add custom domain: `app.controlladoria.com.br`
 
 ---
 
-## Troubleshooting
+## Step 5 — AWS Amplify (Sysadmin UI)
 
-### Build Fails
+1. Amplify Console → **New app** → same flow
+2. Select `controlladoria-sysadmin-ui` repo, branch `main`
+3. Environment variables:
+   ```
+   NEXT_PUBLIC_API_URL=https://api.controlladoria.com.br
+   NEXT_PUBLIC_CUSTOMER_URL=https://app.controlladoria.com.br
+   ```
+4. Deploy
+5. Add custom domain: `admin.controlladoria.com.br`
+6. Consider enabling **Amplify access control** (password protection) for extra security
 
-**Frontend build error:**
+---
+
+## Step 6 — Vercel (Marketing Website)
+
+1. vercel.com → **Add New Project** → Import `controlladoria-website`
+2. Framework: Next.js (auto-detected)
+3. No environment variables needed
+4. Deploy
+5. Add custom domain: `controlladoria.com.br`
+
+---
+
+## Step 7 — Stripe Webhooks
+
+1. Stripe Dashboard → **Developers** → **Webhooks** → **Add endpoint**
+2. URL: `https://api.controlladoria.com.br/stripe/webhook`
+3. Events to listen for:
+   - `checkout.session.completed`
+   - `customer.subscription.created`
+   - `customer.subscription.updated`
+   - `customer.subscription.deleted`
+   - `invoice.payment_succeeded`
+   - `invoice.payment_failed`
+4. Copy signing secret → set `STRIPE_WEBHOOK_SECRET` in Railway env vars → redeploy
+
+---
+
+## Step 8 — Mobile App (EAS Build)
+
 ```bash
-# Check Vercel build logs
-# Common issues:
-# - Missing environment variables
-# - TypeScript errors
-# - Import errors
+cd controlladoria-app
+npm install -g eas-cli
+eas login                   # Expo account
 
-# Test locally first:
-cd frontend
-npm run build
+# Configure API URL for production builds (in eas.json or as EAS secret)
+eas secret:create --scope project --name EXPO_PUBLIC_API_URL \
+  --value https://api.controlladoria.com.br
+
+# Build
+npm run build:android       # eas build --platform android
+npm run build:ios            # eas build --platform ios (builds on Expo servers)
+
+# Submit to stores
+eas submit --platform android
+eas submit --platform ios
 ```
 
-**Backend build error:**
+**Requirements:**
+- Apple Developer Program membership ($99/yr) — for iOS App Store
+- Google Play Console account ($25 one-time) — for Android
+- App bundle IDs configured in `app.json`
+
+---
+
+## CI/CD Summary
+
+| Repo | Trigger (Dev) | Trigger (Prod) | Target |
+|------|--------------|----------------|--------|
+| `controlladoria-api` | Push to `main` | `workflow_dispatch` ("deploy") | Railway |
+| `controlladoria-jobs` | Push to `main` | `workflow_dispatch` ("deploy") | Lambda via ECR |
+| `controlladoria-ui` | Push to `main` | Push to `main` | Amplify (auto) |
+| `controlladoria-sysadmin-ui` | Push to `main` | Push to `main` | Amplify (auto) |
+| `controlladoria-website` | Push to `main` | Push to `main` | Vercel (auto) |
+| `controlladoria-app` | Manual `eas build` | Manual `eas build` + `eas submit` | EAS cloud |
+
+---
+
+## Post-Deployment Verification
+
 ```bash
-# Check Render logs
-# Common issues:
-# - Missing dependencies in requirements.txt
-# - Python version mismatch
-```
+# 1. API health
+curl https://api.controlladoria.com.br/health
 
-### 500 Internal Server Error
-
-**Check backend logs:**
-1. Render Dashboard → Your service → Logs
-2. Look for Python errors
-3. Common issues:
-   - Missing environment variable
-   - Database connection failed
-   - AI API key invalid
-
-### Webhook Not Working
-
-```bash
-# Test webhook manually
-curl -X POST https://controlladoria-api.onrender.com/stripe/webhook \
+# 2. Auth flow
+curl -X POST https://api.controlladoria.com.br/auth/login \
   -H "Content-Type: application/json" \
-  -d '{}'
+  -d '{"email":"test@example.com","password":"test"}'
 
-# Should return 400 (invalid payload) but proves endpoint is accessible
+# 3. Docs
+open https://api.controlladoria.com.br/docs
 
-# Check Stripe webhook status
-# Stripe Dashboard → Webhooks → Your endpoint → Recent events
+# 4. Customer UI
+open https://app.controlladoria.com.br
+
+# 5. Sysadmin
+open https://admin.controlladoria.com.br
+
+# 6. Marketing site
+open https://controlladoria.com.br
 ```
 
-### Database Connection Issues
+Test paths:
+1. Register new user → receive verification email → verify
+2. Upload a PDF document → wait for PENDING_VALIDATION status → validate rows
+3. View DRE report → export as PDF
+4. Start Stripe checkout with test card `4242 4242 4242 4242`
+5. Check Stripe webhook was received (Dashboard → Webhooks → Recent deliveries)
 
+---
+
+## Rollback
+
+### API (Railway)
+Railway Dashboard → Deployments → select previous deploy → **Redeploy**
+
+### Jobs (Lambda)
 ```bash
-# Test connection
-psql $DATABASE_URL
-
-# Check connection pool settings
-# In database.py, ensure pool_size is reasonable for your plan
+# Previous image tag is stored in ECR — update Lambda to previous image:
+aws lambda update-function-code \
+  --function-name controlladoria-worker-document-processing-prod \
+  --image-uri <previous-ecr-image-uri>
 ```
+
+### Frontends (Amplify / Vercel)
+Both platforms show deployment history — click any previous build to promote it to production.
+
+### Database Migration Rollback
+```bash
+alembic downgrade -1    # rolls back one migration
+```
+Always take a manual backup before running migrations on production.
+
+---
+
+## Monitoring
+
+| What | Where |
+|------|-------|
+| API errors | Sysadmin UI → Errors page |
+| API logs | Railway dashboard → Logs tab |
+| Lambda logs | CloudWatch Logs → `/aws/lambda/controlladoria-worker-*` |
+| Lambda metrics | CloudWatch Metrics (invocations, errors, duration) |
+| Queue depth | SQS Console → `controlladoria-document-processing-prod` |
+| Billing | Stripe Dashboard |
+| Email delivery | Resend Dashboard |
+| Frontend build | Amplify Console → Build logs |
 
 ---
 
@@ -536,121 +457,24 @@ psql $DATABASE_URL
 
 Before going live:
 
-- [ ] All API keys in environment variables (not code)
-- [ ] `.env` files in `.gitignore`
-- [ ] HTTPS enabled (automatic with Vercel/Render)
-- [ ] CORS configured correctly (only your domain)
-- [ ] Stripe webhook signature verification enabled
+- [ ] `ENVIRONMENT=production` in Railway
+- [ ] `FREE_DEMO_MODE=false`
+- [ ] Stripe LIVE keys (not test `sk_test_...`)
+- [ ] JWT_SECRET_KEY is unique and ≥ 64 chars
+- [ ] CORS_ORIGINS lists only production domains (no `*`)
+- [ ] `.env` files are in `.gitignore`
+- [ ] No hardcoded secrets in code
+- [ ] Stripe webhook signature verification active
 - [ ] Rate limiting enabled
-- [ ] SQL injection protection (using SQLAlchemy ORM)
-- [ ] XSS protection (React auto-escaping)
-- [ ] JWT tokens expire (30 minutes)
-- [ ] Database backups enabled
-- [ ] Error messages don't leak sensitive info
+- [ ] Sysadmin UI on separate subdomain with access control
+- [ ] First sysadmin account created and MFA enabled
 
 ---
 
-## Rollback Procedure
+## Known Issues to Fix Before Production
 
-If deployment fails:
+> These are code bugs that must be patched before the first prod deploy.
 
-### Frontend Rollback (Vercel)
-1. Vercel Dashboard → Deployments
-2. Find previous working deployment
-3. Click "..." → "Promote to Production"
-
-### Backend Rollback (Render)
-1. Render Dashboard → Your service
-2. Manual Deploy → Select previous commit
-3. Deploy
-
-### Database Rollback
-```bash
-# Rollback migration
-alembic downgrade -1
-
-# Restore from backup
-psql $DATABASE_URL < backup_YYYYMMDD.sql
-```
-
----
-
-## Performance Optimization
-
-### Frontend (Vercel)
-
-- ✅ Automatic CDN
-- ✅ Edge caching
-- ✅ Image optimization (use Next.js Image)
-- ✅ Code splitting (automatic)
-
-### Backend (Render)
-
-**Caching:**
-```python
-# Add Redis for session caching (optional)
-# Render Dashboard → New Redis instance
-# Update api.py with Redis caching
-```
-
-**Database Optimization:**
-```sql
--- Add indexes for frequently queried fields
-CREATE INDEX idx_documents_status ON documents(status);
-CREATE INDEX idx_documents_user_upload ON documents(user_id, upload_date DESC);
-```
-
----
-
-## Cost Estimation
-
-**Minimum Production Setup:**
-
-| Service | Plan | Cost/Month |
-|---------|------|------------|
-| Render Backend | Starter | $7 |
-| Render PostgreSQL | Starter | $7 |
-| Vercel Frontend | Free | $0 |
-| Stripe | Transaction fees | 2.9% + $0.30 |
-| Domain | Namecheap | ~$1 |
-| **Total** | | **~$15/month** |
-
-**With Growth (100 users):**
-
-| Service | Plan | Cost/Month |
-|---------|------|------------|
-| Render Backend | Standard | $25 |
-| PostgreSQL | Standard | $20 |
-| Vercel Frontend | Pro (optional) | $0-20 |
-| AI API Costs | Pay-per-use | $10-50 |
-| **Total** | | **~$55-115/month** |
-
----
-
-## Next Steps
-
-1. ✅ Deploy backend to Render
-2. ✅ Deploy frontend to Vercel
-3. ✅ Set up production database
-4. ✅ Configure all environment variables
-5. ✅ Run database migrations
-6. ✅ Configure Stripe webhooks
-7. ✅ Test complete user flow
-8. ✅ Set up monitoring
-9. ✅ Configure custom domain
-10. ✅ Go live!
-
----
-
-## Support Resources
-
-- **Render Docs:** https://render.com/docs
-- **Vercel Docs:** https://vercel.com/docs
-- **Next.js Docs:** https://nextjs.org/docs
-- **FastAPI Docs:** https://fastapi.tiangolo.com
-- **Stripe Docs:** https://stripe.com/docs
-
-For ControlladorIA-specific issues, check:
-- [DATABASE_SETUP.md](./DATABASE_SETUP.md)
-- [STRIPE_SETUP.md](./STRIPE_SETUP.md)
-- [GitHub Issues](https://github.com/yourusername/ControlladorIA/issues)
+1. **`controlladoria-api/config.py` lines 122-124, 215-217** — domain names contain a space (`"controllad oria.com.br"`). Fix: remove the space.
+2. **`controlladoria-api/api.py` lines 174-179** — CORS origins are hardcoded in a `if environment == "production"` block (with the broken domain names) instead of reading from `settings.cors_origins`. Fix: remove the hardcoded block and rely on `CORS_ORIGINS` env var.
+3. **`controlladoria-sysadmin-ui/.env.example` line 5** — same space typo in commented prod URL.

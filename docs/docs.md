@@ -1,508 +1,629 @@
-# ControlladorIA (ControlladorIA) - Documentacao Completa
+# ControlladorIA — Documentação Completa
 
-> **Versao**: 0.4.0 | **Ultima atualizacao**: 2026-02-25
-> **Stack**: FastAPI + SQLAlchemy + Next.js 16 + TypeScript
+> **Versão**: 2.0 | **Última atualização**: 2026-05-22
+> **Stack**: FastAPI + SQLAlchemy 2 + Next.js 16 + TypeScript + AWS Lambda + Gemini/Nova/GPT
 
 ---
 
-## Indice / Table of Contents
+## Índice / Table of Contents
 
-- [PT-BR: Visao Geral](#pt-br-visao-geral)
-- [EN-US: Overview](#en-us-overview)
-- [Arquitetura / Architecture](#arquitetura--architecture)
-- [Estrutura do Projeto / Project Structure](#estrutura-do-projeto--project-structure)
-- [Setup de Desenvolvimento / Development Setup](#setup-de-desenvolvimento--development-setup)
-- [Variaveis de Ambiente / Environment Variables](#variaveis-de-ambiente--environment-variables)
+- [Visão Geral](#visão-geral)
+- [Arquitetura](#arquitetura)
+- [Repositórios](#repositórios)
+- [Stack de Tecnologia](#stack-de-tecnologia)
+- [Estrutura do controlladoria-api](#estrutura-do-controlladoria-api)
+- [Entidades do Banco de Dados](#entidades-do-banco-de-dados)
 - [API Endpoints](#api-endpoints)
-- [Modelos de Dados / Data Models](#modelos-de-dados--data-models)
-- [Fluxo do Usuario / User Flow](#fluxo-do-usuario--user-flow)
+- [Pipeline de Processamento de Documentos](#pipeline-de-processamento-de-documentos)
+- [IA — Cascata de 3 Provedores](#ia--cascata-de-3-provedores)
+- [Relatórios Financeiros](#relatórios-financeiros)
+- [Auth e Autorização](#auth-e-autorização)
+- [Setup de Desenvolvimento](#setup-de-desenvolvimento)
+- [Variáveis de Ambiente](#variáveis-de-ambiente)
+- [Documentação Relacionada](#documentação-relacionada)
 
 ---
 
-# PT-BR: Visao Geral
+## Visão Geral
 
-## O que e o ControlladorIA?
+ControlladorIA é uma plataforma SaaS de contabilidade automatizada por inteligência artificial, projetada para PMEs brasileiras e escritórios de contabilidade. O sistema recebe documentos financeiros (notas fiscais, recibos, extratos bancários, planilhas Excel, XML de NFe/NFSe), extrai automaticamente os dados usando IA e gera relatórios contábeis padronizados: **DRE**, **Balanço Patrimonial** e **Fluxo de Caixa**.
 
-O ControlladorIA e uma plataforma SaaS de contabilidade automatizada por inteligencia artificial, projetada para pequenas e medias empresas brasileiras. O sistema recebe documentos financeiros (notas fiscais, recibos, extratos bancarios, planilhas), extrai automaticamente os dados usando IA, e gera relatorios contabeis padronizados: **DRE** (Demonstracao do Resultado do Exercicio), **Balanco Patrimonial** e **Fluxo de Caixa**.
+### Funcionalidades Principais
 
-### Problema que resolve
-
-Contabilidade manual e cara, demorada e propensa a erros. Donos de pequenas empresas gastam horas classificando documentos e gerando relatorios. O ControlladorIA automatiza todo esse processo: o usuario faz upload do documento, a IA extrai e classifica os dados, e os relatorios sao gerados automaticamente.
-
-### Publico-alvo
-
-- Pequenas e medias empresas brasileiras
-- Escritorios de contabilidade
-- Hospitais e clinicas (departamentalizacao por centro de custo)
-- Qualquer empresa que precise de DRE/Balanco/Fluxo automatizados
-
-### Funcionalidades principais
-
-1. **Upload inteligente** - Aceita PDF, imagem, Excel, XML (NFe), OFX/OFC (extratos), Word, TXT
-2. **Extracao por IA** - GPT/Claude analisa documentos e extrai dados estruturados
-3. **Classificacao automatica** - 52 categorias baseadas no Plano de Contas brasileiro
-4. **Validacao de dados** - Motor de validacao financeira com regras de negocio
-5. **Relatorios contabeis** - DRE, Balanco Patrimonial, Fluxo de Caixa
-6. **Multi-tenant** - Isolamento completo de dados por usuario
-7. **Equipe** - Convites, papeis (owner/admin/contador/auxiliar/viewer)
-8. **MFA** - Autenticacao em dois fatores (TOTP e email)
-9. **Assinaturas** - Integracao Stripe com trial de 15 dias
-10. **Dashboard** - 10 graficos interativos com Recharts
+1. **Upload inteligente** — PDF, imagem, Excel, XML (NFe/NFSe/CTe), OFX/OFC, DOCX, TXT
+2. **Extração por IA** — Gemini Flash Lite (primário) → Nova 2 Lite (secundário) → GPT-5.4 Nano (fallback)
+3. **Classificação automática** — 52 categorias baseadas no Plano de Contas brasileiro
+4. **Auditoria de categorias** — revisão de IA pós-extração antes da validação humana
+5. **Validação de dados** — motor de validação financeira com revisão humana obrigatória
+6. **Relatórios contábeis** — DRE, Balanço Patrimonial, Fluxo de Caixa; exportação PDF/Excel/CSV
+7. **Multi-tenant** — isolamento completo por organização, múltiplos membros por org
+8. **MFA** — TOTP (Google Authenticator) + email OTP + dispositivos confiáveis 30 dias
+9. **Assinaturas** — integração Stripe, planos Starter/Equipe/Enterprise em BRL (PIX, boleto, cartão)
+10. **Console interno** — sysadmin UI para operações, impersonação e rastreamento de erros
 
 ---
 
-# EN-US: Overview
-
-## What is ControlladorIA?
-
-ControlladorIA is an AI-powered automated accounting SaaS platform designed for Brazilian small and medium businesses. The system receives financial documents (invoices, receipts, bank statements, spreadsheets), automatically extracts data using AI, and generates standardized accounting reports: **DRE** (Income Statement), **Balance Sheet**, and **Cash Flow Statement**.
-
-### Problem it solves
-
-Manual accounting is expensive, time-consuming, and error-prone. Small business owners spend hours classifying documents and generating reports. ControlladorIA automates the entire process: the user uploads a document, AI extracts and classifies the data, and reports are generated automatically.
-
-### Target audience
-
-- Brazilian small and medium businesses
-- Accounting firms
-- Hospitals and clinics (departmental cost center tracking)
-- Any company needing automated DRE/Balance Sheet/Cash Flow
-
-### Key features
-
-1. **Smart upload** - Accepts PDF, images, Excel, XML (NFe), OFX/OFC (bank statements), Word, TXT
-2. **AI extraction** - GPT/Claude analyzes documents and extracts structured data
-3. **Automatic classification** - 52 categories based on Brazilian Chart of Accounts
-4. **Data validation** - Financial validation engine with business rules
-5. **Accounting reports** - Income Statement (DRE), Balance Sheet, Cash Flow
-6. **Multi-tenant** - Complete data isolation per user
-7. **Teams** - Invitations, roles (owner/admin/accountant/bookkeeper/viewer)
-8. **MFA** - Two-factor authentication (TOTP and email)
-9. **Subscriptions** - Stripe integration with 15-day trial
-10. **Dashboard** - 10 interactive charts with Recharts
-
----
-
-# Arquitetura / Architecture
-
-## Diagrama de Alto Nivel / High-Level Diagram
+## Arquitetura
 
 ```
-                    +------------------+
-                    |   Next.js 16     |
-                    |   (Frontend)     |
-                    |   Port: 3000     |
-                    +--------+---------+
-                             |
-                             | HTTPS / JWT Bearer
-                             |
-                    +--------v---------+
-                    |   FastAPI         |
-                    |   (Backend API)   |
-                    |   Port: 8000      |
-                    +---+----+----+----+
-                        |    |    |    |
-            +-----------+    |    |    +------------+
-            |                |    |                 |
-    +-------v------+  +-----v----v---+   +----------v--------+
-    |  PostgreSQL  |  |   OpenAI /   |   |    AWS S3         |
-    |  (Database)  |  |   Anthropic  |   |    (File Storage) |
-    |              |  |   (AI APIs)  |   |                   |
-    +--------------+  +--------------+   +-------------------+
-                            |
-                     +------v------+
-                     |   Redis     |   (Optional - caching)
-                     +-------------+
-```
+                                +---------------------+
+                                | controlladoria-     |
+                                | website             |
+                                | Next.js 16.2        |
+                                | (Site de marketing) |
+                                +---------------------+
 
-## Stack Tecnologica / Technology Stack
-
-### Backend
-| Componente | Tecnologia | Versao | Proposito |
-|---|---|---|---|
-| Framework | FastAPI | >= 0.109 | API REST async |
-| ORM | SQLAlchemy | >= 2.0 | Mapeamento objeto-relacional |
-| Migracoes | Alembic | >= 1.13 | Versionamento de schema |
-| Auth | JWT (python-jose) | >= 3.3 | Tokens de autenticacao |
-| Senhas | bcrypt (passlib) | 4.0.1 | Hash de senhas |
-| AI (OpenAI) | openai | >= 1.12 | Extracao de dados |
-| AI (Anthropic) | anthropic | >= 0.18 | Extracao de dados (alternativa) |
-| Pagamentos | stripe | >= 8.0 | Assinaturas |
-| Email | resend | >= 0.8 | Emails transacionais |
-| Storage | boto3 | >= 1.34 | AWS S3 |
-| Cache | redis | >= 5.0 | Cache de respostas AI |
-| Jobs | APScheduler | >= 3.10 | Tarefas agendadas |
-| Rate Limit | slowapi | >= 0.1.9 | Limitacao de requisicoes |
-| Validacao | pydantic | >= 2.6 | Validacao de dados |
-| Sanitizacao | bleach | >= 6.1 | Limpeza de input HTML |
-
-### Frontend
-| Componente | Tecnologia | Proposito |
-|---|---|---|
-| Framework | Next.js 16 | SSR + React |
-| Linguagem | TypeScript | Type safety |
-| Graficos | Recharts | Dashboard charts |
-| Estilo | Tailwind CSS | Utility-first CSS |
-| HTTP | Fetch API | Requisicoes ao backend |
-
-### Infraestrutura
-| Componente | Tecnologia | Proposito |
-|---|---|---|
-| DB Producao | PostgreSQL | Banco relacional |
-| DB Dev | SQLite | Desenvolvimento local |
-| Storage | AWS S3 | Armazenamento de arquivos |
-| Deploy Backend | Railway | Hosting do backend |
-| Deploy Frontend | Vercel | Hosting do frontend |
-
----
-
-# Estrutura do Projeto / Project Structure
-
-```
-ControlladorIA/
-|-- api.py                      # FastAPI app principal, middleware, startup
-|-- config.py                   # Pydantic Settings (todas as configs)
-|-- database.py                 # Modelos SQLAlchemy (User, Document, etc.)
-|-- models.py                   # Modelos Pydantic (request/response)
-|-- structured_processor.py     # Processador de documentos (AI extraction)
-|-- validation.py               # Motor de validacao financeira
-|-- email_service.py            # Servico de email (Resend)
-|-- exception_handlers.py       # Handlers globais de excecoes
-|-- exceptions.py               # Custom exceptions
-|-- i18n.py                     # Mensagens PT-BR / EN
-|-- i18n_errors.py              # Traducao de erros de AI
-|-- validators.py               # Validador de dados financeiros
-|-- create_database.py          # Auto-criacao de banco PostgreSQL
-|--
-|-- auth/                       # Modulo de autenticacao
-|   |-- __init__.py
-|   |-- security.py             # JWT, bcrypt, tokens
-|   |-- service.py              # Logica de registro/login/reset
-|   |-- dependencies.py         # FastAPI deps (get_current_user)
-|   |-- permissions.py          # RBAC com claims granulares
-|   |-- models.py               # Schemas Pydantic de auth
-|   |-- mfa_service.py          # MFA (TOTP + email)
-|   |-- session_manager.py      # Gerenciamento de sessoes
-|   |-- team_management.py      # Convites e equipe
-|
-|-- routers/                    # Routers modulares (SoC/SOLID)
-|   |-- auth.py                 # /auth/* - registro, login, MFA
-|   |-- documents.py            # /documents/* - upload, CRUD
-|   |-- transactions.py         # /stats, /reports/* - relatorios
-|   |-- billing.py              # /billing/* - Stripe
-|   |-- team.py                 # /team/* - membros, convites
-|   |-- sessions.py             # /sessions/* - dispositivos
-|   |-- admin.py                # /admin/* - painel admin
-|   |-- contact.py              # /contact - formulario
-|   |-- account.py              # /account/* - perfil
-|
-|-- accounting/                 # Logica contabil
-|   |-- categories.py           # 52 categorias DRE (Plano de Contas)
-|
-|-- middleware/
-|   |-- subscription.py         # Middleware de assinatura ativa
-|
-|-- storage/
-|   |-- s3_service.py           # AWS S3 upload/download/delete
-|
-|-- stripe_integration/         # Integracao Stripe
-|   |-- client.py               # Cliente Stripe
-|   |-- service.py              # Logica de assinaturas
-|   |-- webhooks.py             # Handlers de webhook
-|
-|-- tasks/
-|   |-- queue_manager.py        # Fila de processamento de documentos
-|
-|-- alembic/                    # Migracoes de banco de dados
-|   |-- versions/               # Arquivos de migracao
-|
-|-- frontend/                   # Aplicacao Next.js
-|   |-- src/
-|   |   |-- app/                # App Router (paginas)
-|   |   |-- components/         # Componentes React
-|   |   |-- lib/                # Utilitarios, API client
-|
-|-- tests/                      # Testes unitarios e integracao
-|-- docs/                       # Documentacao (voce esta aqui)
++---------------------+         +---------------------+         +---------------------+
+| controlladoria-ui   |  HTTP   | controlladoria-api  |  HTTP   | controlladoria-     |
+| Next.js 16.1        | ------> | FastAPI · Python 3.12| <------ | sysadmin-ui         |
+| React 19            |         | Port 8000           |         | Next.js 14.2        |
+| Port 3000           |         +----------+----------+         | Port 3001           |
++---------------------+                    |                    +---------------------+
+                                           |
+                        +------------------+------------------+
+                        |                  |                  |
+                 +------+------+    +------+------+    +-----+------+
+                 | PostgreSQL  |    | Redis       |    | AWS S3     |
+                 | 16 (Railway)|    | (Cache +    |    | (Armazena- |
+                 |             |    |  Celery)    |    |  mento)    |
+                 +-------------+    +------+------+    +------------+
+                                           |
+                                    +------+------+
+                                    | controlladoria-
+                                    | jobs         |
+                                    | Celery +     |
+                                    | Lambda       |
+                                    +------+------+
+                                           |
+                        +------------------+------------------+
+                        |                  |                  |
+                 +------+------+    +------+------+    +-----+------+
+                 | Google      |    | AWS Bedrock |    | OpenAI     |
+                 | Gemini Flash|    | Nova 2 Lite |    | GPT-5.4    |
+                 | Lite (1º)   |    | (2º)        |    | Nano (3º)  |
+                 +-------------+    +-------------+    +------------+
 ```
 
 ---
 
-# Setup de Desenvolvimento / Development Setup
+## Repositórios
 
-## Pre-requisitos / Prerequisites
+| Repo | Propósito | Stack | Porta |
+|------|-----------|-------|-------|
+| `controlladoria-api` | API REST, lógica de negócio, auth | Python 3.12, FastAPI, SQLAlchemy 2, Alembic | 8000 |
+| `controlladoria-jobs` | Processamento assíncrono (docs, cleanup) | Python, Celery + Redis, AWS Lambda | N/A |
+| `controlladoria-ui` | App web do cliente | Next.js 16.1, React 19, Tailwind 4, Radix UI | 3000 |
+| `controlladoria-sysadmin-ui` | Console admin interno | Next.js 14.2, React 18, Tailwind 3 | 3001 |
+| `controlladoria-website` | Landing page de marketing | Next.js 16.2, React 19, Tailwind 4 | 3000 |
 
-- Python 3.10+
-- Node.js 18+ (para frontend)
-- PostgreSQL 14+ (producao) ou SQLite (dev)
-- Poppler (para processar PDFs) - [Download Windows](https://github.com/oschwartz10612/poppler-windows/releases/)
+### Infraestrutura de Deploy
 
-## Backend Setup
+| Serviço | Plataforma | CI/CD |
+|---------|------------|-------|
+| API | Railway.app | GitHub Actions → Railway CLI |
+| Jobs (Lambda) | AWS Lambda (us-east-2) | GitHub Actions → Docker → ECR → Lambda CLI |
+| UI do cliente | AWS Amplify | Amplify built-in (push to main) |
+| Sysadmin UI | AWS Amplify | Amplify built-in (push to main) |
+| Website | Vercel | N/A (estático) |
+
+---
+
+## Stack de Tecnologia
+
+### Backend (controlladoria-api + controlladoria-jobs)
+
+| Componente | Tecnologia | Versão | Propósito |
+|-----------|-----------|--------|-----------|
+| Framework | FastAPI | ≥ 0.109 | API REST async |
+| ORM | SQLAlchemy | ≥ 2.0 | Mapeamento objeto-relacional |
+| Migrações | Alembic | ≥ 1.13 | Versionamento de schema |
+| Auth | JWT (python-jose) | ≥ 3.3 | Tokens de autenticação |
+| Senhas | bcrypt (passlib 4.0.1) | fixado | Hash de senhas |
+| AI — Primário | google-genai | ≥ 0.8 | Gemini Flash Lite |
+| AI — Secundário | boto3 | ≥ 1.34 | Nova 2 Lite via Bedrock |
+| AI — Fallback | openai | ≥ 1.12 | GPT-5.4 Nano |
+| Pagamentos | stripe | ≥ 8.0 | Assinaturas |
+| Email | resend | ≥ 0.8 | Emails transacionais |
+| Storage | boto3 | ≥ 1.34 | AWS S3 |
+| Queue (Celery) | celery + redis | ≥ 5.3 | Processamento assíncrono |
+| Rate limit | slowapi | ≥ 0.1.9 | Limitação de requisições |
+| Validação | pydantic | ≥ 2.6 | Validação de dados |
+| Sanitização | bleach | ≥ 6.1 | Limpeza de input HTML |
+
+### Frontend (controlladoria-ui)
+
+| Componente | Tecnologia | Versão |
+|-----------|-----------|--------|
+| Framework | Next.js (App Router) | 16.1.6 |
+| React | React | 19.2.3 |
+| Estilo | Tailwind CSS | 4 |
+| Componentes | Radix UI | 1.x–2.x |
+| Gráficos | Recharts | 3.6.0 |
+| HTTP client | axios | 1.13.2 |
+| Pagamentos | @stripe/stripe-js | 8.6.4 |
+| Validação | zod | 4.3.6 |
+
+### Sysadmin UI (controlladoria-sysadmin-ui)
+
+| Componente | Tecnologia | Versão |
+|-----------|-----------|--------|
+| Framework | Next.js (App Router) | 14.2.35 |
+| React | React | 18.3.1 |
+| Estilo | Tailwind CSS | 3.4.4 |
+| Gráficos | Recharts | 2.12.7 |
+| Ícones | lucide-react | 0.414.0 |
+
+### Mobile (controlladoria-app)
+
+| Componente | Tecnologia | Versão |
+|-----------|-----------|--------|
+| Framework | Expo | SDK 54 |
+| React Native | react-native | 0.76.6 |
+| React | React | 18.3.1 |
+| Navigation | expo-router | ~4.0.21 |
+| Build | EAS Build (cloud) | — |
+
+---
+
+## Estrutura do controlladoria-api
+
+```
+controlladoria-api/
+├── api.py                      # FastAPI app principal, middleware, startup
+├── config.py                   # Pydantic Settings (todas as configs)
+├── database.py                 # Modelos SQLAlchemy (User, Document, etc.)
+├── models.py                   # Modelos Pydantic (request/response)
+├── structured_processor.py     # StructuredDocumentProcessor — extração AI
+├── ai_key_pool.py              # AIKeyPoolManager — pool de chaves round-robin
+├── validation.py               # Motor de validação financeira
+├── email_service.py            # EmailService (Resend)
+├── exception_handlers.py       # Handlers globais de exceções
+├── i18n.py                     # Mensagens PT-BR / EN
+├── cnpj_validator.py           # BrasilAPI / SERPRO CNPJ lookup
+│
+├── auth/
+│   ├── security.py             # JWT, bcrypt, tokens
+│   ├── service.py              # Registro, login, reset
+│   ├── dependencies.py         # FastAPI deps (get_current_user)
+│   ├── permissions.py          # RBAC com claims granulares
+│   ├── mfa_service.py          # MFA (TOTP + email OTP)
+│   ├── session_manager.py      # Gerenciamento de sessões (limite 2)
+│   └── team_management.py      # Convites e equipe
+│
+├── routers/
+│   ├── auth.py                 # /auth/* — registro, login, MFA, sessions
+│   ├── documents.py            # /documents/* — upload, CRUD, validação
+│   ├── transactions.py         # /transactions/* — relatórios, DRE, exportação
+│   ├── organizations.py        # /organizations/* — multi-org, convites
+│   ├── team.py                 # /team/* — membros, convites
+│   ├── billing.py              # /stripe/* — Stripe checkout, portal, webhook
+│   ├── clients.py              # /clients/* — fornecedores/clientes
+│   ├── initial_balance.py      # /initial-balance/* — saldos de abertura
+│   ├── sessions.py             # /sessions/* — dispositivos ativos
+│   ├── admin.py                # /admin/* — painel, ai-pool-stats
+│   ├── sysadmin.py             # /sysadmin/* — impersonação, erros
+│   ├── contact.py              # /contact — formulário público
+│   └── account.py              # /account/* — perfil
+│
+├── accounting/
+│   ├── categories.py           # 52 categorias + mapeamento para DRE
+│   ├── accounting_engine.py    # AccountingEngine
+│   ├── dre_calculator.py       # DRECalculator + exportação
+│   ├── balance_sheet_calculator.py  # BalanceSheetCalculator
+│   └── cash_flow_calculator.py      # CashFlowCalculator
+│
+├── middleware/
+│   └── subscription.py         # require_active_subscription()
+│
+├── storage/
+│   └── s3_service.py           # AWS S3 upload/download/delete
+│
+├── cache/
+│   └── redis_cache.py          # RedisCache (respostas AI, sessões)
+│
+├── stripe_integration/
+│   ├── service.py              # Lógica de assinaturas
+│   └── webhooks.py             # Handlers de webhook
+│
+└── alembic/
+    └── versions/               # Arquivos de migração
+```
+
+---
+
+## Entidades do Banco de Dados
+
+| Entidade | Propósito |
+|---------|-----------|
+| `User` | Contas com MFA, theme prefs, org ativa |
+| `Organization` | Dados de empresa multi-tenant (CNPJ, endereço, logo) |
+| `OrgMembership` | Mapeamento usuário-org com papel (owner/admin/accountant/bookkeeper/viewer/api_user) |
+| `OrgInvitation` | Tokens de convite cross-org |
+| `Document` | Documentos financeiros com status de extração |
+| `DocumentValidationRow` | Linhas de transação extraídas aguardando revisão humana |
+| `ChartOfAccountsEntry` | Plano de contas por org |
+| `JournalEntry` / `JournalEntryLine` | Lançamentos contábeis (partida dobrada) |
+| `Client` | Fornecedores/clientes por org |
+| `KnownItem` | Cache de categorização por usuário (aprendizado) |
+| `Subscription` / `Plan` | Estado de billing Stripe |
+| `OrgBankAccount` | Contas bancárias por org |
+| `OrgInitialBalance` | Saldos de abertura por ano fiscal |
+| `UserSession` | Rastreamento de sessões ativas (dispositivo, IP, confiança) |
+| `UserClaim` | Permissões granulares customizadas |
+| `APIKey` | Tokens de acesso programático |
+| `AuditLog` | Trilha de auditoria append-only |
+| `ContactSubmission` | Dados do formulário de contato |
+| `PasswordReset` | Tokens de reset de senha |
+
+---
+
+## API Endpoints
+
+### Auth (`/auth`)
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| POST | `/auth/register` | Cadastro (rate limit: 5/hora) |
+| POST | `/auth/login` | Login → JWT access + refresh |
+| POST | `/auth/logout` | Logout |
+| POST | `/auth/refresh` | Renovar access token |
+| POST | `/auth/forgot-password` | Solicitar reset (rate limit: 3/hora) |
+| POST | `/auth/reset-password` | Confirmar reset |
+| GET | `/auth/verify-email` | Verificar email |
+| POST | `/auth/mfa/setup` | Configurar TOTP |
+| POST | `/auth/mfa/enable` | Ativar MFA |
+| POST | `/auth/mfa/verify` | Verificar código MFA |
+| POST | `/auth/mfa/disable` | Desativar MFA |
+| GET | `/auth/cnpj/{cnpj}` | Lookup CNPJ (BrasilAPI/SERPRO) |
+
+### Documentos (`/documents`)
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| POST | `/documents/upload` | Upload único (rate limit: 60/minuto) |
+| POST | `/documents/upload/bulk` | Upload múltiplo |
+| POST | `/documents/upload/csv` | Import CSV de transações |
+| GET | `/documents/` | Listar documentos da org |
+| GET | `/documents/{id}` | Detalhes + linhas de validação |
+| PUT | `/documents/{id}` | Atualizar metadados |
+| DELETE | `/documents/{id}` | Deletar documento |
+| GET | `/documents/{id}/download` | Download do arquivo original |
+| GET | `/documents/{id}/preview` | Preview do documento |
+| POST | `/documents/{id}/validate` | Validar todas as linhas |
+| PUT | `/documents/validation-rows/{row_id}` | Atualizar linha individual |
+| GET | `/documents/queue-status` | Status da fila de processamento |
+| POST | `/documents/manual-entry` | Entrada manual de transação |
+
+### Transações e Relatórios (`/transactions`)
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| GET | `/transactions/stats` | Estatísticas gerais |
+| GET | `/transactions/reports/summary` | Resumo financeiro |
+| GET | `/transactions/reports/by-category` | Resumo por categoria |
+| GET | `/transactions/reports/monthly` | Resumo mensal |
+| GET | `/transactions/reports/dre` | DRE completa |
+| GET | `/transactions/reports/balance-sheet` | Balanço Patrimonial |
+| GET | `/transactions/reports/cash-flow` | Fluxo de Caixa |
+| GET | `/transactions/reports/trial-balance` | Balancete |
+| GET | `/transactions/reports/ledger` | Razão Geral |
+| GET | `/transactions/reports/chart-of-accounts` | Plano de Contas |
+| GET | `/transactions/dashboard-metrics` | Métricas para dashboard |
+| POST | `/transactions/journal-entries` | Criar lançamento contábil |
+| GET | `/transactions/export/excel` | Exportar Excel |
+| GET | `/transactions/export/pdf` | Exportar PDF |
+| GET | `/transactions/export/csv` | Exportar CSV |
+| GET | `/transactions/initial-balance` | Saldos de abertura |
+
+### Organizações (`/organizations`)
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| POST | `/organizations/` | Criar organização |
+| GET | `/organizations/` | Listar orgs do usuário |
+| POST | `/organizations/switch` | Trocar org ativa |
+| POST | `/organizations/invite` | Convidar para org |
+| POST | `/organizations/accept/{token}` | Aceitar convite |
+| DELETE | `/organizations/decline/{token}` | Recusar convite |
+
+### Billing (`/stripe`)
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| GET | `/stripe/plans` | Listar planos disponíveis |
+| POST | `/stripe/create-checkout-session` | Criar sessão de checkout |
+| POST | `/stripe/create-portal-session` | Portal do cliente Stripe |
+| GET | `/stripe/subscription-status` | Status da assinatura |
+| POST | `/stripe/cancel` | Cancelar assinatura |
+| POST | `/stripe/webhook` | Webhook Stripe (assinado) |
+
+### Admin (`/admin`)
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| GET | `/admin/stats` | Métricas da plataforma |
+| GET | `/admin/users` | Listar usuários |
+| GET | `/admin/recent-activity` | Atividade recente |
+| GET | `/admin/audit-logs` | Trilha de auditoria |
+| GET | `/admin/ai-pool-stats` | Saúde do pool de chaves AI |
+
+### Sysadmin (`/sysadmin`)
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| GET | `/sysadmin/dashboard/stats` | Métricas globais (MRR, usuários, erros) |
+| GET | `/sysadmin/users/search` | Busca full-text de usuários |
+| GET | `/sysadmin/users/{id}` | Detalhes do usuário |
+| POST | `/sysadmin/users/{id}/impersonate` | Gerar JWT de impersonação |
+| GET | `/sysadmin/errors` | Log de erros com stack traces |
+
+---
+
+## Pipeline de Processamento de Documentos
+
+```
+POST /documents/upload
+       │
+       ▼
+Validação (tipo, tamanho ≤ 30MB, CNPJ, assinatura ativa)
+       │
+       ▼
+Arquivo → AWS S3 (ou filesystem local em dev)
+       │
+       ▼
+Document criado (status: PENDING)
+       │
+       ▼
+DocumentQueueManager.enqueue() → máx 3 concorrentes
+       │
+       ▼
+SQS → Lambda (ou Celery worker)
+       │
+       ▼
+StructuredDocumentProcessor:
+   ├── XML (NFe/NFSe/CTe): Parse determinístico — sem IA
+   ├── OFX/OFC: Parse determinístico + detecção de transferências — sem IA
+   ├── Excel: DataFrame → texto formatado → IA
+   ├── PDF: base64 → IA (visão multimodal)
+   ├── Imagem: base64 → IA (visão multimodal)
+   └── DOCX/TXT: texto extraído → IA
+       │
+       ▼
+Chamada AI (3 tentativas, backoff exponencial)
+via cascata: Gemini Flash Lite → Nova 2 Lite → GPT-5.4 Nano
+       │
+       ▼
+JSON parseado → FinancialDocument (Pydantic)
+       │
+       ▼
+DocumentValidationRows criadas (status: pending_validation)
+       │
+       ▼
+Categorização em lote (itens nao_categorizado → call_text_prompt())
+       │
+       ▼
+Auditoria de categorias (revisão IA de todas as linhas — non-blocking)
+       │
+       ▼
+Status: PENDING_VALIDATION → fila de revisão humana
+       │
+       ▼
+Usuário aprova/corrige → COMPLETED
+       │
+       ▼
+Dados disponíveis em DRE, Balanço, Fluxo de Caixa
+```
+
+---
+
+## IA — Cascata de 3 Provedores
+
+| Ordem | Provedor | Modelo | Auth |
+|-------|---------|--------|------|
+| 1 — Primário | Google Gemini | `gemini-flash-lite-latest` | `GEMINI_API_KEYS` (pool) |
+| 2 — Secundário | Amazon Nova via Bedrock | `us.amazon.nova-2-lite-v1:0` | IAM credentials |
+| 3 — Fallback | OpenAI | `gpt-5.4-nano` | `OPENAI_API_KEYS` (pool) |
+
+### AIKeyPoolManager (`ai_key_pool.py`)
+
+- **Round-robin** entre chaves disponíveis por provedor
+- **Health tracking** — chave marcada como unhealthy após N erros consecutivos (padrão: 3)
+- **Recuperação automática** — chave unhealthy volta ao pool após 5 minutos
+- **Thread-safe** — lock protege o pool para processamento concorrente
+- **Stats endpoint** — `GET /admin/ai-pool-stats`
+
+### Fases de IA por Documento
+
+1. **Extração** — parse do documento e extração de campos estruturados
+2. **Categorização em lote** — itens `nao_categorizado` agrupados em um único prompt
+3. **Auditoria de categorias** — revisão de todas as categorias atribuídas; AI retorna apenas correções (`{}` = tudo correto); non-blocking
+
+### Formatos por Provedor
+
+- **XML (NFe/NFSe/CTe)** e **OFX/OFC**: processamento determinístico, zero custo de IA
+- **PDF/Imagem**: enviados como base64 para extração multimodal
+- **Excel/DOCX/TXT**: convertidos para texto formatado antes do prompt
+
+---
+
+## Relatórios Financeiros
+
+Todos calculados em tempo real a partir dos DocumentValidationRows com status COMPLETED, filtrados por org e período.
+
+### DRE (Demonstração do Resultado do Exercício)
+
+Endpoint: `GET /transactions/reports/dre?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD`
+
+Estrutura:
+```
+Receita Bruta
+  (-) Deduções da Receita
+= Receita Líquida
+  (-) Custos Variáveis (CMV/CSP)
+= Margem de Contribuição
+  (-) Despesas Administrativas Fixas
+  (-) Despesas Comerciais Fixas
+  (-) Depreciação e Amortização
+= Resultado Operacional (EBITDA ajustado)
+  (+/-) Resultado Financeiro
+= Resultado Antes dos Impostos
+  (-) IRPJ / CSLL / Simples Nacional
+= Resultado Líquido do Período
+```
+
+### Balanço Patrimonial
+
+Endpoint: `GET /transactions/reports/balance-sheet?date=YYYY-MM-DD`
+
+Baseado no Plano de Contas + JournalEntries com partida dobrada verdadeira. Valores em centavos.
+
+### Fluxo de Caixa
+
+Endpoint: `GET /transactions/reports/cash-flow?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD`
+
+Método indireto: Resultado Líquido → ajustes não-caixa → variação do capital de giro → caixa das atividades (operacional, investimento, financiamento).
+
+### Exportação
+
+| Formato | Endpoint |
+|---------|---------|
+| Excel (.xlsx) | `/transactions/export/excel` |
+| PDF | `/transactions/export/pdf` (reportlab) |
+| CSV | `/transactions/export/csv` |
+
+### 52 Categorias Contábeis
+
+| Grupo | Exemplos |
+|-------|---------|
+| Receita Operacional | receita_vendas_produtos, receita_servicos, receita_locacao |
+| Deduções | impostos_sobre_vendas, devolucoes, descontos_concedidos |
+| Custos | cmv, csp, materia_prima, salarios_producao |
+| Despesas Administrativas | salarios_administrativos, aluguel, honorarios_contabeis |
+| Despesas Comerciais | marketing_publicidade, fretes, comissao_vendas |
+| Resultado Financeiro | juros_passivos, tarifas_bancarias, receita_financeira |
+| Impostos | irpj, csll, simples_nacional, iptu |
+| Não Operacional | depreciacao, amortizacao, perdas, provisoes |
+| Transferência | transferencia_interna (excluída do DRE) |
+| Não classificado | nao_categorizado (último recurso) |
+
+---
+
+## Auth e Autorização
+
+### Fluxo de Autenticação
+
+```
+Login (email + senha)
+  → JWT access (30 min) + refresh (7 dias)
+    → MFA (se habilitado):
+        → TOTP (Google Authenticator) OU Email OTP
+        → Dispositivo confiável (pula por 30 dias)
+    → Cookies httponly (UI) / localStorage (sysadmin)
+    → Auto-refresh no 401
+```
+
+### Papéis e Permissões
+
+| Papel | Permissões |
+|-------|-----------|
+| owner | Todas — incluindo billing.manage |
+| admin | Tudo exceto billing.manage |
+| accountant | documents.*, reports.advanced |
+| bookkeeper | documents.*, reports.view |
+| viewer | Somente leitura |
+| api_user | documents.*, reports.view via API key |
+
+22 permissões granulares organizadas por domínio: `documents.*`, `reports.*`, `clients.*`, `team.*`, `billing.*`, `admin.*`, `api.*`, `account.manage`.
+
+### Claims Customizáveis
+
+Tabela `user_claims` — permissões individuais com expiração opcional, registram quem concedeu.
+
+---
+
+## Setup de Desenvolvimento
 
 ```bash
-# 1. Clone o repositorio
-git clone <repo-url>
-cd ControlladorIA
-
-# 2. Crie o ambiente virtual
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-venv\Scripts\activate     # Windows
-
-# 3. Instale as dependencias
+# API
+cd controlladoria-api
 pip install -r requirements.txt
+cp .env.example .env          # Configurar variáveis
+alembic upgrade head          # Rodar migrações
+uvicorn api:app --reload --port 8000
 
-# 4. Configure o .env
-cp .env.example .env
-# Edite o .env com suas chaves (API keys, JWT secret, etc.)
-
-# 5. Rode as migracoes
-alembic upgrade head
-
-# 6. Inicie o servidor
-uvicorn api:app --reload --host 0.0.0.0 --port 8000
-```
-
-## Frontend Setup
-
-```bash
-cd frontend
-
-# 1. Instale dependencias
+# UI do cliente
+cd controlladoria-ui
 npm install
+cp .env.local.example .env.local
+npm run dev                   # Porta 3000
 
-# 2. Configure variaveis
-# Crie .env.local com NEXT_PUBLIC_API_URL=http://localhost:8000
+# Sysadmin UI
+cd controlladoria-sysadmin-ui
+npm install
+cp .env.example .env.local
+npm run dev                   # Porta 3001
 
-# 3. Inicie o dev server
-npm run dev
-```
+# Jobs (Celery worker)
+cd controlladoria-jobs
+celery -A celery_app worker -l info -c 4
 
-## Testes / Running Tests
-
-```bash
-# Testes unitarios (CI-safe)
-pytest tests/ --ignore=tests/integration --ignore=tests/test_api_integration.py --ignore=tests/test_multi_user_system.py -q
-
-# Todos os testes (requer servidor rodando)
-pytest tests/ -v
+# Website de marketing
+cd controlladoria-website
+npm install
+npm run dev                   # Porta 3000
 ```
 
 ---
 
-# Variaveis de Ambiente / Environment Variables
+## Variáveis de Ambiente
 
-## Obrigatorias para producao / Required for production
+### controlladoria-api (obrigatórias para produção)
 
-| Variavel | Exemplo | Descricao |
-|---|---|---|
-| `DATABASE_URL` | `postgresql://user:pass@host:5432/db` | Conexao PostgreSQL |
-| `JWT_SECRET_KEY` | `<hex 64 chars>` | Segredo JWT (gere com `openssl rand -hex 32`) |
-| `OPENAI_API_KEY` | `sk-...` | Chave API OpenAI |
+| Variável | Exemplo | Descrição |
+|---------|---------|-----------|
+| `DATABASE_URL` | `postgresql://user:pass@host:5432/db` | Conexão PostgreSQL |
+| `JWT_SECRET_KEY` | `<hex 64 chars>` | Segredo JWT |
+| `ENCRYPTION_KEY` | `<Fernet key>` | Chave para segredos MFA |
+| `AI_PROVIDER` | `gemini` | Provedor primário |
+| `GEMINI_API_KEYS` | `key1,key2` | Pool de chaves Gemini |
+| `OPENAI_API_KEYS` | `sk-...` | Pool de chaves OpenAI (fallback) |
+| `NOVA_MODEL` | `us.amazon.nova-2-lite-v1:0` | Modelo Nova via Bedrock |
+| `NOVA_REGION` | `us-east-2` | Região AWS |
+| `AWS_ACCESS_KEY_ID` | `AKIA...` | Credencial AWS (S3 + Bedrock) |
+| `AWS_SECRET_ACCESS_KEY` | `...` | Segredo AWS |
+| `S3_BUCKET_NAME` | `controlladoria-prod` | Bucket S3 |
+| `USE_S3` | `true` | Habilitar S3 |
 | `STRIPE_API_KEY` | `sk_live_...` | Chave Stripe |
 | `STRIPE_WEBHOOK_SECRET` | `whsec_...` | Segredo webhook Stripe |
-| `RESEND_API_KEY` | `re_...` | Chave API Resend (emails) |
-| `USE_S3` | `true` | Habilitar S3 |
-| `AWS_ACCESS_KEY_ID` | `AKIA...` | Credencial AWS |
-| `AWS_SECRET_ACCESS_KEY` | `...` | Segredo AWS |
-| `S3_BUCKET_NAME` | `controlladoria-prod` | Nome do bucket S3 |
+| `RESEND_API_KEY` | `re_...` | Chave Resend (emails) |
+| `REDIS_URL` | `redis://...` | Cache e broker Celery |
+| `CORS_ORIGINS` | `https://app.controlladoria.com.br,...` | Origens permitidas |
+| `ENVIRONMENT` | `production` | Ambiente |
 
-## Opcionais / Optional
+### Variáveis Opcionais
 
-| Variavel | Default | Descricao |
-|---|---|---|
-| `AI_PROVIDER` | `openai` | Provedor AI: `openai` ou `anthropic` |
-| `OPENAI_MODEL` | `gpt-5-mini` | Modelo OpenAI |
-| `ANTHROPIC_MODEL` | `claude-haiku-4-5` | Modelo Anthropic |
+| Variável | Padrão | Descrição |
+|---------|--------|-----------|
+| `AI_FAILOVER_ENABLED` | `true` | Failover automático entre provedores |
+| `AI_KEY_UNHEALTHY_THRESHOLD` | `3` | Erros antes de marcar chave como inativa |
+| `AI_KEY_RECOVERY_SECONDS` | `300` | Segundos antes de reativar chave |
 | `ENABLE_AI_CACHE` | `false` | Cache Redis para respostas AI |
-| `RATE_LIMIT_ENABLED` | `true` | Rate limiting |
-| `ENVIRONMENT` | `development` | Ambiente (habilita HSTS em producao) |
-| `CORS_ORIGINS` | `*` | Origens permitidas (restringir em producao) |
+| `AI_CACHE_TTL` | `86400` | TTL do cache (24h) |
+| `FREE_DEMO_MODE` | `false` | Bypass de todos os paywalls (demo) |
+| `FRONTEND_URL` | `http://localhost:3000` | Para links em emails |
 
 ---
 
-# API Endpoints
+## Documentação Relacionada
 
-## Autenticacao / Authentication (`/auth`)
-
-| Metodo | Rota | Descricao | Auth |
-|---|---|---|---|
-| POST | `/auth/register` | Cadastro de usuario | Nao |
-| POST | `/auth/login` | Login (retorna JWT) | Nao |
-| POST | `/auth/refresh` | Renovar token | Refresh token |
-| POST | `/auth/forgot-password` | Solicitar reset de senha | Nao |
-| POST | `/auth/reset-password` | Confirmar reset de senha | Token |
-| GET | `/auth/verify-email` | Verificar email | Token |
-| POST | `/auth/mfa/setup` | Configurar MFA | JWT |
-| POST | `/auth/mfa/enable` | Ativar MFA | JWT |
-| POST | `/auth/mfa/verify` | Verificar codigo MFA | Temp token |
-
-## Documentos / Documents (`/documents`)
-
-| Metodo | Rota | Descricao | Auth |
-|---|---|---|---|
-| POST | `/documents/upload` | Upload de documento | JWT |
-| POST | `/documents/upload/bulk` | Upload multiplo | JWT |
-| GET | `/documents/` | Listar documentos | JWT |
-| GET | `/documents/{id}` | Detalhes do documento | JWT |
-| PUT | `/documents/{id}` | Atualizar documento | JWT |
-| DELETE | `/documents/{id}` | Deletar documento | JWT |
-| GET | `/documents/{id}/download` | Download do arquivo | JWT |
-| POST | `/documents/{id}/validate` | Validar transacoes | JWT |
-
-## Relatorios / Reports
-
-| Metodo | Rota | Descricao | Auth |
-|---|---|---|---|
-| GET | `/stats` | Estatisticas gerais | JWT |
-| GET | `/reports/summary` | Resumo financeiro | JWT |
-| GET | `/reports/by-category` | Resumo por categoria | JWT |
-| GET | `/reports/monthly` | Resumo mensal | JWT |
-| GET | `/reports/dre` | DRE (Income Statement) | JWT |
-| GET | `/reports/balance-sheet` | Balanco Patrimonial | JWT |
-| GET | `/reports/cash-flow` | Fluxo de Caixa | JWT |
-| GET | `/reports/export/excel` | Exportar Excel | JWT |
-| GET | `/reports/export/pdf` | Exportar PDF | JWT |
-
-## Equipe / Team (`/team`)
-
-| Metodo | Rota | Descricao | Auth |
-|---|---|---|---|
-| GET | `/team/members` | Listar membros | JWT + permission |
-| POST | `/team/invite` | Convidar membro | JWT + team.invite |
-| DELETE | `/team/members/{id}` | Remover membro | JWT + team.remove |
-| POST | `/team/invitations/{token}/accept` | Aceitar convite | Token |
-| DELETE | `/team/invitations/{id}` | Cancelar convite | JWT |
-
-## Assinaturas / Billing (`/billing`)
-
-| Metodo | Rota | Descricao | Auth |
-|---|---|---|---|
-| GET | `/billing/subscription` | Status da assinatura | JWT |
-| POST | `/billing/create-checkout` | Criar sessao Stripe | JWT |
-| POST | `/billing/create-portal` | Portal do cliente | JWT |
-| POST | `/billing/webhook` | Webhook Stripe | Webhook secret |
-
-## Outros / Other
-
-| Metodo | Rota | Descricao | Auth |
-|---|---|---|---|
-| GET | `/health` | Health check completo | Nao |
-| GET | `/health/ready` | Readiness probe (K8s) | Nao |
-| GET | `/health/live` | Liveness probe (K8s) | Nao |
-| POST | `/contact` | Formulario de contato | Nao (rate limited) |
-| GET | `/sessions/active` | Sessoes ativas | JWT |
-
----
-
-# Modelos de Dados / Data Models
-
-## Banco de Dados / Database Schema
-
-### Tabela `users`
-- Autenticacao: email, password_hash, JWT
-- Perfil: full_name, company_name, cnpj
-- MFA: mfa_enabled, mfa_method, mfa_secret
-- Equipe: role, parent_user_id, invited_by
-- Compliance: agreed_to_terms, agreed_to_privacy (LGPD)
-
-### Tabela `documents`
-- Arquivo: file_name, file_type, file_path, file_size, file_hash
-- Status: pending -> processing -> completed/failed/cancelled
-- Dados: extracted_data_json (JSON com toda extracao)
-- Isolamento: user_id (multi-tenant)
-- NFe: is_cancellation, cancels_document_id
-
-### Tabela `subscriptions`
-- Stripe: stripe_customer_id, stripe_subscription_id
-- Status: trialing, active, past_due, canceled
-- Equipe: max_users (plano de membros)
-
-### Tabela `chart_of_accounts`
-- Plano de Contas customizavel por usuario
-- Codigos padrao brasileiro (X.Y.ZZ)
-- Natureza: debito ou credito
-
-### Tabela `journal_entries` + `journal_entry_lines`
-- Lancamentos contabeis (partida dobrada)
-- Valores em centavos (evita decimais)
-- Link com documento fonte
-
-### Tabela `audit_logs`
-- Trilha de auditoria completa
-- Before/after values (JSON)
-- IP, user agent, timestamp
-
-### Outras tabelas
-- `user_sessions` - Controle de dispositivos (limite 2)
-- `user_claims` - Permissoes granulares
-- `api_keys` - Chaves API programaticas
-- `team_invitations` - Convites de equipe
-- `password_resets` - Tokens de reset
-- `contact_submissions` - Formulario de contato
-- `document_validation_rows` - Linhas para validacao manual
-- `clients` - Clientes/fornecedores
-
----
-
-# Fluxo do Usuario / User Flow
-
-## Fluxo de Upload / Upload Flow
-
-```
-1. Usuario seleciona arquivo(s)
-   |
-2. Frontend envia POST /documents/upload
-   |
-3. Backend valida:
-   - Tamanho (max 30MB)
-   - Extensao permitida
-   - MIME type (se python-magic disponivel)
-   - Assinatura ativa
-   - Rate limit (10/minuto)
-   |
-4. Arquivo salvo (S3 ou local) com UUID unico
-   |
-5. Registro criado no DB (status: pending)
-   |
-6. Background task iniciada:
-   a. Detecta tipo do arquivo
-   b. Converte se necessario (PDF -> imagem via Poppler)
-   c. Envia para AI (OpenAI ou Anthropic)
-   d. Recebe JSON estruturado
-   e. Valida dados extraidos
-   f. Atualiza DB (status: completed)
-   g. Auto-cria cliente se identificado
-   |
-7. Frontend polling verifica status
-```
-
-## Fluxo de Relatorios / Report Flow
-
-```
-1. Usuario acessa DRE/Balanco/Fluxo
-   |
-2. Frontend chama GET /reports/dre?date_from=...&date_to=...
-   |
-3. Backend:
-   a. Carrega documentos completed do usuario
-   b. Extrai dados financeiros de cada documento
-   c. Classifica por categoria (52 categorias DRE V2)
-   d. Calcula totais e subtotais
-   e. Retorna estrutura completa do relatorio
-   |
-4. Frontend renderiza com formatacao brasileira (R$, separadores)
-```
-
----
-
-## Documentacao Relacionada / Related Docs
-
-- [Upload e Processamento de Arquivos](./upload-and-processing.md)
-- [Relatorios Financeiros (DRE/Balanco/Fluxo)](./financial-reports.md)
-- [Integracao com IA (AI APIs)](./ai-integration.md)
-- [Seguranca](./security.md)
-- [Plano de Microservicos](./microservices-plan.md)
-- [Setup do Banco de Dados](./DATABASE_SETUP.md)
-- [Guia de Deploy](./DEPLOYMENT.md)
-- [Setup do Stripe](./STRIPE_SETUP.md)
+| Documento | Conteúdo |
+|-----------|---------|
+| [AI_DOCUMENTATION.md](./AI_DOCUMENTATION.md) | Arquitetura completa de IA, pool de chaves, custo, privacidade |
+| [ai-integration.md](./ai-integration.md) | Implementação atual, call_text_prompt(), plano de refatoração |
+| [DEPLOYMENT.md](./DEPLOYMENT.md) | Deploy completo: Railway, Lambda, Amplify, SSM, CI/CD |
+| [financial-reports.md](./financial-reports.md) | DRE, Balanço, Fluxo de Caixa — estrutura e cálculos |
+| [security.md](./security.md) | Auth, RBAC, MFA, LGPD, auditoria de vulnerabilidades |
+| [upload-and-processing.md](./upload-and-processing.md) | Upload, formatos, processamento, validação |
+| [ADMIN_GUIDE.md](./ADMIN_GUIDE.md) | Console sysadmin, impersonação, métricas |
+| [STRIPE_SETUP.md](./STRIPE_SETUP.md) | Setup de billing, planos, webhooks |
+| [DATABASE_SETUP.md](./DATABASE_SETUP.md) | Setup PostgreSQL, migrações Alembic |
