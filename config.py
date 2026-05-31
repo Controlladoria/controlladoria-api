@@ -111,7 +111,8 @@ class Settings(BaseSettings):
     # Free demo mode — bypasses ALL subscription checks when True.
     # Set FREE_DEMO_MODE=true in env for temporary open-access demos.
     # To re-enable paywalls: set FREE_DEMO_MODE=false (or remove the var).
-    free_demo_mode: bool = False
+    # HARDCODED True until subscriptions are re-enabled — flip to False to restore paywalls.
+    free_demo_mode: bool = True
 
     stripe_trial_days: int = 15
     stripe_success_url: str = "http://localhost:3000/dashboard"
