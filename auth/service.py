@@ -300,7 +300,9 @@ class AuthService:
             )
 
         # Check subscription for invited users (non-owners)
-        if user.role != 'owner':
+        # Skipped entirely when free_demo_mode is enabled.
+        from config import settings as _settings
+        if user.role != 'owner' and not _settings.free_demo_mode:
             # Find the owner of this organization
             owner = db.query(User).filter(
                 User.company_tax_id == user.company_tax_id,
