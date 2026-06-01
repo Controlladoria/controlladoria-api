@@ -172,9 +172,9 @@ cors_origins = settings.cors_origins.copy() if settings.cors_origins != ["*"] el
 # Add sysadmin subdomains explicitly (for production)
 if settings.environment == "production":
     cors_origins = [
-        "https://controllad oria.com.br",
-        "https://www.controllad oria.com.br",
-        "https://admin.controllad oria.com.br",  # Sysadmin subdomain
+        "https://controlladoria.com.br",
+        "https://www.controlladoria.com.br",
+        "https://admin.controlladoria.com.br",  # Sysadmin subdomain
         "https://app.controlladoria.com.br",  # Production customer app
     ]
 else:
@@ -411,7 +411,7 @@ async def startup_event():
 # =============================================================================
 # MOUNT SYSADMIN ROUTER
 # =============================================================================
-# Separate API routes for business operators (admin.controllad oria.com.br)
+# Separate API routes for business operators (admin.controlladoria.com.br)
 # Completely isolated from customer API with separate authentication
 app.include_router(sysadmin_router)
 logger.info("✅ System Admin router mounted at /sysadmin")
