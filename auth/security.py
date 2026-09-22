@@ -86,12 +86,17 @@ def create_access_token(
     return encoded_jwt
 
 
-def create_refresh_token(user_id: int) -> str:
+def create_refresh_token(user_id: int, session_id: Optional[str] = None) -> str:
     """
     Create a JWT refresh token
 
     Args:
         user_id: User ID to encode in token
+        session_id: Device session this token belongs to. Carried so that the
+            access tokens minted from it stay bound to the same session and can
+            still be revoked by logout / "sign out other devices". Optional for
+            backwards compatibility with refresh tokens issued before this was
+            added.
 
     Returns:
         Encoded JWT refresh token
@@ -104,6 +109,9 @@ def create_refresh_token(user_id: int) -> str:
         "iat": datetime.utcnow(),
         "type": "refresh",
     }
+
+    if session_id:
+        to_encode["sid"] = session_id
 
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt

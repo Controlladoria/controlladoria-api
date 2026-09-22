@@ -434,7 +434,7 @@ class AuthService:
             data={"sub": str(user.id), "email": user.email, "role": user.role, "sid": new_session.id, "org_id": user.active_org_id},
             claims=list(all_claims)
         )
-        refresh_token = create_refresh_token(user.id)
+        refresh_token = create_refresh_token(user.id, session_id=new_session.id)
 
         return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
@@ -495,12 +495,37 @@ class AuthService:
                 elif claim.claim_value.lower() == "false":
                     all_claims.discard(claim.claim_type)
 
-        # Create new tokens with claims (include org_id)
-        access_token = create_access_token(
-            data={"sub": str(user.id), "email": user.email, "role": user.role, "org_id": user.active_org_id},
-            claims=list(all_claims)
-        )
-        new_refresh_token = create_refresh_token(user.id)
+        # Carry the device session through the refresh.
+        #
+        # Without this the refreshed access token has no "sid", and
+        # get_current_user only validates a session when one is present — so
+        # after a single refresh the token became effectively unrevocable:
+        # logging out or ending the session from another device no longer
+        # killed it. Tokens issued before this change have no sid, so treat it
+        # as optional rather than rejecting them.
+        session_id = payload.get("sid")
+        if session_id:
+            session = db.query(UserSession).filter_by(id=session_id, is_active=True).first()
+            if not session or session.is_expired:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Sessão encerrada ou expirada",
+                )
+            # Keep the session alive while the user is active.
+            session.last_activity = datetime.utcnow()
+            db.commit()
+
+        token_data = {
+            "sub": str(user.id),
+            "email": user.email,
+            "role": user.role,
+            "org_id": user.active_org_id,
+        }
+        if session_id:
+            token_data["sid"] = session_id
+
+        access_token = create_access_token(data=token_data, claims=list(all_claims))
+        new_refresh_token = create_refresh_token(user.id, session_id=session_id)
 
         return TokenResponse(access_token=access_token, refresh_token=new_refresh_token)
 
@@ -766,6 +791,6 @@ class AuthService:
             data={"sub": str(user.id), "email": user.email, "role": user.role, "sid": new_session.id, "org_id": user.active_org_id},
             claims=list(all_claims)
         )
-        refresh_token = create_refresh_token(user.id)
+        refresh_token = create_refresh_token(user.id, session_id=new_session.id)
 
         return TokenResponse(access_token=access_token, refresh_token=refresh_token)

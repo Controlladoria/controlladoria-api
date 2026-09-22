@@ -365,7 +365,7 @@ async def create_organization(
         },
         claims=list(all_claims),
     )
-    refresh_token = create_refresh_token(user_id=current_user.id)
+    refresh_token = create_refresh_token(user_id=current_user.id, session_id=session.id)
 
     logger.info(
         f"🏢 User {current_user.id} ({current_user.email}) created new org {org.id} ({org.company_name}, CNPJ: {org.cnpj})"
@@ -525,7 +525,7 @@ async def switch_organization(
         },
         claims=list(all_claims),
     )
-    refresh_token = create_refresh_token(user_id=current_user.id)
+    refresh_token = create_refresh_token(user_id=current_user.id, session_id=session.id)
 
     logger.info(
         f"👤 User {current_user.id} switched to org {org_id} ({org.company_name}) as {membership.role}"
@@ -895,7 +895,7 @@ async def accept_org_invitation(
         },
         claims=list(all_claims),
     )
-    refresh_token = create_refresh_token(user_id=current_user.id)
+    refresh_token = create_refresh_token(user_id=current_user.id, session_id=session.id)
 
     logger.info(
         f"✅ User {current_user.email} accepted invitation to org {org.company_name} as {invitation.role}"
