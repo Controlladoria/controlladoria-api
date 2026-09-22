@@ -1300,6 +1300,84 @@ class OrgInitialBalance(Base):
         return f"<OrgInitialBalance(id={self.id}, org={self.organization_id}, date={self.reference_date}, completed={self.is_completed})>"
 
 
+class AdvisorConversation(Base):
+    """
+    A chat thread between a user and the AI financial advisor.
+
+    Scoped to an organization so a thread follows the company, not the person —
+    a colleague on the same org sees the same history, consistent with how every
+    other report in the system is scoped.
+    """
+
+    __tablename__ = "advisor_conversations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(
+        Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    # Auto-derived from the first user message
+    title = Column(String(200), nullable=True)
+
+    # Period the thread was opened against, so it can be reopened in context
+    period_start = Column(Date, nullable=True)
+    period_end = Column(Date, nullable=True)
+
+    # Rolling summary of turns that have aged out of the replay window
+    summary = Column(Text, nullable=True)
+    summarized_through_id = Column(Integer, nullable=True)
+
+    message_count = Column(Integer, default=0, nullable=False, server_default="0")
+    is_archived = Column(Boolean, default=False, nullable=False, server_default="false")
+
+    created_at = Column(DateTime, default=now_brazil, nullable=False)
+    updated_at = Column(DateTime, default=now_brazil, onupdate=now_brazil, nullable=False)
+
+    messages = relationship(
+        "AdvisorMessage",
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        order_by="AdvisorMessage.id",
+    )
+
+    __table_args__ = (
+        Index("ix_advisor_conv_org_updated", "organization_id", "updated_at"),
+    )
+
+    def __repr__(self):
+        return f"<AdvisorConversation(id={self.id}, org={self.organization_id}, messages={self.message_count})>"
+
+
+class AdvisorMessage(Base):
+    """One turn in an advisor conversation."""
+
+    __tablename__ = "advisor_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(
+        Integer,
+        ForeignKey("advisor_conversations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    role = Column(String(20), nullable=False)  # "user" | "assistant"
+    content = Column(Text, nullable=False)
+
+    # Which provider/model produced an assistant turn — needed to debug a bad
+    # answer after the fact, since failover means it varies per message.
+    provider = Column(String(50), nullable=True)
+    model = Column(String(100), nullable=True)
+
+    created_at = Column(DateTime, default=now_brazil, nullable=False)
+
+    conversation = relationship("AdvisorConversation", back_populates="messages")
+
+    def __repr__(self):
+        return f"<AdvisorMessage(id={self.id}, conv={self.conversation_id}, role={self.role})>"
+
+
 if __name__ == "__main__":
     print("Initializing database...")
     init_db()

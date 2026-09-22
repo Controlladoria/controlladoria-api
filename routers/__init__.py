@@ -5,6 +5,7 @@ Organized by domain for better separation of concerns
 
 from .account import router as account_router
 from .admin import router as admin_router
+from .advisor import router as advisor_router
 from .auth import router as auth_router
 from .billing import router as billing_router
 from .contact import router as contact_router
@@ -19,6 +20,7 @@ from .transactions import router as transactions_router
 __all__ = [
     "account_router",
     "admin_router",
+    "advisor_router",
     "auth_router",
     "billing_router",
     "contact_router",

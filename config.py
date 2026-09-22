@@ -89,6 +89,41 @@ class Settings(BaseSettings):
     ai_retry_delay: int = 1  # seconds
     ai_timeout: int = 60  # seconds
 
+    # ─── AI Financial Advisor (chat) ───────────────────────────────────────────
+    # Conversational agent over DRE / Balanço / Indicadores / Fluxo de Caixa.
+    # Gated behind the "ai_advisor" plan feature (Pro and Max).
+    advisor_enabled: bool = True
+
+    # Chat needs stronger reasoning than document extraction, so it gets its own
+    # model overrides. Empty string = reuse the extraction model for that provider.
+    advisor_gemini_model: str = "gemini-flash-latest"
+    advisor_openai_model: str = "gpt-5-mini"
+    advisor_nova_model: str = "us.amazon.nova-2-pro-v1:0"
+
+    # Provider order for chat. Falls back to `ai_provider` when empty.
+    advisor_provider: str = ""
+
+    advisor_max_tokens: int = 2000
+    advisor_temperature: float = 0.3  # Low: numbers must not be improvised
+    advisor_stream_timeout: int = 120  # seconds for a full streamed answer
+
+    # Conversation history: how many prior turns are replayed into the prompt.
+    # Older turns are folded into a rolling summary instead of being dropped.
+    advisor_history_turns: int = 8
+    advisor_max_message_chars: int = 4000
+
+    # Financial snapshot cache (Redis). Keyed by org + period + data fingerprint,
+    # so it self-invalidates when a new document finishes processing.
+    advisor_context_cache_ttl: int = 900  # 15 minutes
+    advisor_trend_months: int = 6  # Months of indicator history stuffed into context
+
+    # Per-user rate limit for the streaming endpoint
+    advisor_rate_limit: str = "30/minute"
+
+    # When free_demo_mode is on, paywalls are bypassed globally. The advisor is
+    # expensive per-request, so it stays gated unless this is explicitly set.
+    ai_advisor_free_demo: bool = False
+
     # Authentication (legacy API key)
     api_key: str = ""
 

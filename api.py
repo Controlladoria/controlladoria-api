@@ -109,6 +109,7 @@ from api_sysadmin import router as sysadmin_router
 from routers import (
     account_router,
     admin_router,
+    advisor_router,
     auth_router,
     billing_router,
     contact_router,
@@ -446,6 +447,10 @@ logger.info("✅ Admin and Contact routers mounted")
 app.include_router(account_router)
 app.include_router(transactions_router)
 logger.info("✅ Account and Transactions routers mounted")
+
+# AI Financial Advisor (streaming chat — Pro/Max plans)
+app.include_router(advisor_router)
+logger.info("✅ AI Advisor router mounted at /advisor")
 
 
 # =============================================================================
