@@ -117,6 +117,7 @@ from routers import (
     initial_balance_router,
     organizations_router,
     org_settings_router,
+    payment_reminders_router,
     sessions_router,
     team_router,
     transactions_router,
@@ -451,6 +452,10 @@ logger.info("✅ Account and Transactions routers mounted")
 # AI Financial Advisor (streaming chat — Pro/Max plans)
 app.include_router(advisor_router)
 logger.info("✅ AI Advisor router mounted at /advisor")
+
+# Upcoming-payment reminders (in-app preview + email preferences)
+app.include_router(payment_reminders_router)
+logger.info("✅ Payment reminders router mounted at /payment-reminders")
 
 
 # =============================================================================

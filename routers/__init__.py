@@ -12,6 +12,7 @@ from .contact import router as contact_router
 from .documents import router as documents_router
 from .initial_balance import router as initial_balance_router
 from .organizations import router as organizations_router
+from .payment_reminders import router as payment_reminders_router
 from .org_settings import router as org_settings_router
 from .sessions import router as sessions_router
 from .team import router as team_router
@@ -27,6 +28,7 @@ __all__ = [
     "documents_router",
     "initial_balance_router",
     "organizations_router",
+    "payment_reminders_router",
     "org_settings_router",
     "sessions_router",
     "team_router",

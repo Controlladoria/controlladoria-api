@@ -1378,6 +1378,50 @@ class AdvisorMessage(Base):
         return f"<AdvisorMessage(id={self.id}, conv={self.conversation_id}, role={self.role})>"
 
 
+class PaymentReminderSetting(Base):
+    """
+    Per-user, per-company preference for upcoming-payment reminders.
+
+    One row per (user, organization): a person in two companies configures each
+    separately, and each email is about exactly one company.
+
+    last_sent_period is what makes the scheduled job idempotent: it stores the
+    period key (e.g. "D2026-09-24", "W2026-39", "M2026-09") after a successful
+    send, so a retried or double-fired run never emails twice.
+    """
+
+    __tablename__ = "payment_reminder_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    organization_id = Column(
+        Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+
+    email_enabled = Column(Boolean, default=False, nullable=False, server_default="false")
+    in_app_enabled = Column(Boolean, default=True, nullable=False, server_default="true")
+    frequency = Column(String(10), default="daily", nullable=False, server_default="daily")
+
+    last_sent_period = Column(String(20), nullable=True)
+    last_sent_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "organization_id", name="uq_payment_reminder_user_org"),
+        Index("ix_payment_reminder_email_enabled", "email_enabled"),
+    )
+
+    def __repr__(self):
+        return (
+            f"<PaymentReminderSetting(user={self.user_id}, org={self.organization_id}, "
+            f"email={self.email_enabled}, freq={self.frequency})>"
+        )
+
+
 if __name__ == "__main__":
     print("Initializing database...")
     init_db()

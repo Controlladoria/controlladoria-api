@@ -912,5 +912,126 @@ class EmailService:
         )
 
 
+def build_payment_reminder_email(
+    *,
+    user_name: str,
+    company_name: str,
+    frequency: str,
+    period_label: str,
+    payments: list,
+    total_label: str,
+    frontend_url: str,
+) -> tuple:
+    """
+    Render the upcoming-payments reminder. Pure: returns (subject, html) and
+    sends nothing, so it can be previewed and tested on its own.
+
+    ``payments`` is a list of dicts with keys: label, category_label,
+    due_date (date), amount_label.
+
+    Every value that came from a document (descriptions, payee names, the
+    company name) is HTML-escaped: they are user- or AI-authored and would
+    otherwise be injected straight into the recipient's mail client.
+    """
+    from html import escape
+
+    first_name = escape((user_name or "").split(" ")[0] or "tudo bem")
+    company = escape(company_name or "sua empresa")
+    period = escape(period_label)
+    show_dates = frequency != "daily"
+    count = len(payments)
+
+    rows = []
+    for item in payments:
+        label = escape(item["label"])
+        category = item.get("category_label")
+        sub = escape(category) if category and category != item["label"] else ""
+        date_cell = ""
+        if show_dates:
+            date_cell = (
+                '<td style="padding: 14px 12px 14px 0; color: #6b7280; font-size: 14px; '
+                'white-space: nowrap; vertical-align: top;">'
+                f'{item["due_date"].strftime("%d/%m")}</td>'
+            )
+        rows.append(
+            "<tr>"
+            f"{date_cell}"
+            '<td style="padding: 14px 12px 14px 0; border-bottom: 1px solid #eef2f2; vertical-align: top;">'
+            f'<div style="color: #111827; font-size: 15px; font-weight: 600;">{label}</div>'
+            + (f'<div style="color: #6b7280; font-size: 13px; margin-top: 2px;">{sub}</div>' if sub else "")
+            + "</td>"
+            '<td style="padding: 14px 0; border-bottom: 1px solid #eef2f2; text-align: right; '
+            'white-space: nowrap; vertical-align: top; color: #111827; font-size: 15px; '
+            f'font-weight: 600;">{escape(item["amount_label"])}</td>'
+            "</tr>"
+        )
+
+    preview_url = f"{frontend_url}/?pagamentos=previa"
+    settings_url = f"{frontend_url}/account/notifications"
+    heading = "Pagamento" if count == 1 else f"{count} pagamentos"
+
+    html = f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pagamentos de {period}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f3f6f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+    <tr>
+      <td style="padding: 32px 16px;">
+        <table role="presentation" style="max-width: 560px; width: 100%; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 28px 32px; background: #0d767b;">
+              <p style="margin: 0; color: #cfe8e9; font-size: 13px; letter-spacing: .04em; text-transform: uppercase;">{company}</p>
+              <h1 style="margin: 6px 0 0; color: #ffffff; font-size: 24px; line-height: 1.3;">Bom dia, {first_name}!</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 28px 32px 8px;">
+              <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.5;">
+                {heading} para <strong>{period}</strong>:
+              </p>
+              <table role="presentation" style="width: 100%; border-collapse: collapse;">
+                {''.join(rows)}
+                <tr>
+                  {'<td></td>' if show_dates else ''}
+                  <td style="padding: 16px 12px 0 0; color: #6b7280; font-size: 14px;">Total</td>
+                  <td style="padding: 16px 0 0; text-align: right; color: #0d767b; font-size: 18px; font-weight: 700; white-space: nowrap;">{escape(total_label)}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 28px 32px 32px; text-align: center;">
+              <a href="{preview_url}" style="display: inline-block; padding: 14px 28px; background: #0d767b; color: #ffffff; text-decoration: none; font-size: 15px; font-weight: 600; border-radius: 8px;">Ver no ControlladorIA</a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 20px 32px; background: #f9fafb; color: #9ca3af; font-size: 12px; line-height: 1.5; text-align: center;">
+              Lembrete gerado a partir dos documentos cadastrados no ControlladorIA.
+              Pagamentos com vencimento em dias anteriores não são listados.<br>
+              <a href="{settings_url}" style="color: #6b7280;">Alterar ou desativar lembretes</a>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+    if frequency == "weekly":
+        subject = f"Pagamentos da semana · {company_name or 'sua empresa'}"
+    elif frequency == "monthly":
+        subject = f"Pagamentos de {period_label} · {company_name or 'sua empresa'}"
+    else:
+        today = payments[0]["due_date"].strftime("%d/%m") if payments else ""
+        subject = f"Pagamentos de hoje, {today} · {company_name or 'sua empresa'}"
+
+    return subject, html
+
+
 # Singleton instance
 email_service = EmailService()
